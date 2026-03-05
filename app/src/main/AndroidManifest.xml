@@ -11,6 +11,7 @@
     <application
         android:name=".MobixyApp"
         android:allowBackup="true"
+        android:usesCleartextTraffic="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
@@ -37,6 +38,11 @@
 
         <service
             android:name=".service.LocalSocksProxyService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
+            android:name=".service.ControlAgentService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
     </application>

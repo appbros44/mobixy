@@ -10,10 +10,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -31,11 +33,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.core.content.ContextCompat
 import com.mobixy.proxy.data.datasource.local.PrefsDataSource
+import com.mobixy.proxy.service.ControlAgentService
 import com.mobixy.proxy.service.LocalSocksProxyService
 import com.mobixy.proxy.service.ProxyForegroundService
 import com.mobixy.proxy.ui.theme.MobixyTheme
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import java.util.UUID
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -80,6 +84,16 @@ fun MainScreen(modifier: Modifier = Modifier) {
     var password by remember { mutableStateOf(prefs.getProxyCredentials()?.second.orEmpty()) }
     var savedCreds by remember { mutableStateOf(prefs.getProxyCredentials()) }
 
+    var backendHost by remember {
+        mutableStateOf(prefs.getBackendHost() ?: "192.168.29.44")
+    }
+    var enrollToken by remember {
+        mutableStateOf(prefs.getBackendEnrollToken() ?: "dev-enroll-token")
+    }
+    var deviceId by remember {
+        mutableStateOf(prefs.getDeviceId() ?: UUID.randomUUID().toString())
+    }
+
     var hasNotificationPermission by remember {
         mutableStateOf(
             android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU ||
@@ -104,7 +118,10 @@ fun MainScreen(modifier: Modifier = Modifier) {
     }
 
     Column(
-        modifier = modifier.fillMaxSize().padding(16.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(text = "Mobixy")
@@ -142,6 +159,65 @@ fun MainScreen(modifier: Modifier = Modifier) {
         }
 
         Text(text = "SOCKS5: ${ip ?: "(no network)"}:${LocalSocksProxyService.DEFAULT_PORT}")
+
+        OutlinedTextField(
+            value = backendHost,
+            onValueChange = { backendHost = it },
+            singleLine = true,
+            label = { Text("Backend Host") },
+        )
+
+        OutlinedTextField(
+            value = enrollToken,
+            onValueChange = { enrollToken = it },
+            singleLine = true,
+            label = { Text("Enroll Token") },
+        )
+
+        OutlinedTextField(
+            value = deviceId,
+            onValueChange = { deviceId = it },
+            singleLine = true,
+            label = { Text("Device ID") },
+        )
+
+        Button(
+            onClick = {
+                prefs.setBackendHost(backendHost)
+                prefs.setBackendEnrollToken(enrollToken)
+                prefs.setDeviceId(deviceId)
+            }
+        ) {
+            Text(text = "Save Backend Settings")
+        }
+
+        val backendConfigured = remember(backendHost, enrollToken, deviceId) {
+            backendHost.trim().isNotEmpty() && enrollToken.trim().isNotEmpty() && deviceId.trim().isNotEmpty()
+        }
+
+        Button(
+            onClick = {
+                prefs.setBackendHost(backendHost)
+                prefs.setBackendEnrollToken(enrollToken)
+                prefs.setDeviceId(deviceId)
+                val intent = android.content.Intent(context, ControlAgentService::class.java)
+                    .setAction(ControlAgentService.ACTION_CONNECT)
+                ContextCompat.startForegroundService(context, intent)
+            },
+            enabled = backendConfigured && hasNotificationPermission
+        ) {
+            Text(text = "Connect Control Agent")
+        }
+
+        Button(
+            onClick = {
+                val intent = android.content.Intent(context, ControlAgentService::class.java)
+                    .setAction(ControlAgentService.ACTION_DISCONNECT)
+                context.startService(intent)
+            }
+        ) {
+            Text(text = "Disconnect Control Agent")
+        }
 
         OutlinedTextField(
             value = username,

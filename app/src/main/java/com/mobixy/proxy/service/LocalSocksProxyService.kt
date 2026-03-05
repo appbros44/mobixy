@@ -44,11 +44,13 @@ class LocalSocksProxyService : Service() {
             port = DEFAULT_PORT,
             credentialsProvider = { prefs.getProxyCredentials() }
         ).also { it.start() }
+        isRunning = true
     }
 
     private fun stopProxy() {
         server?.stop()
         server = null
+        isRunning = false
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -72,5 +74,8 @@ class LocalSocksProxyService : Service() {
         const val ACTION_START = "com.mobixy.proxy.service.LocalSocksProxyService.START"
         const val ACTION_STOP = "com.mobixy.proxy.service.LocalSocksProxyService.STOP"
         const val DEFAULT_PORT = 1080
+
+        @Volatile
+        var isRunning: Boolean = false
     }
 }
