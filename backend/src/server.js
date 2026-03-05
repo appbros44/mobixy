@@ -2,7 +2,6 @@ import 'dotenv/config'
 import http from 'http';
 import express from 'express'
 import { WebSocketServer } from 'ws'
-import session from 'express-session'
 import { getDb } from './db.js'
 import { sendWakePush } from './fcm.js'
 import jwt from 'jsonwebtoken'
@@ -11,11 +10,9 @@ import crypto from 'crypto'
 const app = express()
 const PORT = process.env.PORT || 8787
 
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'dev-admin-token'
 const ENROLL_TOKEN = process.env.ENROLL_TOKEN || 'dev-enroll-token'
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@mobixy.local'
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || ''
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin'
-const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-session-secret'
 const UI_ORIGIN = process.env.UI_ORIGIN || 'http://localhost:5173'
 const USE_DB = process.env.USE_DB === 'true'
 
@@ -179,13 +176,6 @@ async function getDeviceFcmToken(deviceId) {
   return null
 }
 
-async function wakeDevice(deviceId) {
-  const token = await getDeviceFcmToken(deviceId)
-  if (!token) return { ok: false, error: 'missing_fcm_token' }
-  const r = await sendWakePush({ token, deviceId })
-  return { ok: true, messageId: r.id }
-}
-
 async function wakeDeviceWithTokenOverride(deviceId, fcmToken) {
   const token = typeof fcmToken === 'string' && fcmToken.trim() ? fcmToken.trim() : await getDeviceFcmToken(deviceId)
   if (!token) return { ok: false, error: 'missing_fcm_token' }
@@ -193,21 +183,9 @@ async function wakeDeviceWithTokenOverride(deviceId, fcmToken) {
   return { ok: true, messageId: r.id }
 }
 
-app.use(
-  session({
-    secret: SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      sameSite: 'lax'
-    }
-  })
-);
-
 app.use((req, res, next) => {
   const p = req.path || ''
-  if (p.startsWith('/ui/') || p.startsWith('/auth/') || p.startsWith('/admin/')) {
+  if (p.startsWith('/auth/') || p.startsWith('/admin/')) {
     res.setHeader('Access-Control-Allow-Origin', UI_ORIGIN);
     res.setHeader('Vary', 'Origin')
     res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -338,14 +316,7 @@ function isAuthorized(req) {
   const adminJwt = verifyAdminJwt(token)
   if (adminJwt) return true
 
-  // legacy fallback
-  return token === ADMIN_TOKEN
-}
-
-function isUiAuthed(req) {
-  const token = getBearerToken(req)
-  if (token && verifyAdminJwt(token)) return true
-  return Boolean(req.session && req.session.isAdmin === true);
+  return false
 }
 
 app.post('/auth/login', (req, res) => {
@@ -382,76 +353,6 @@ app.get('/auth/me', (req, res) => {
   if (!payload) return res.status(401).json({ error: 'unauthorized' })
   res.json({ ok: true, role: 'admin' })
 })
-
-// Device bootstrap: exchange global ENROLL_TOKEN for a per-device secret (one-time / rotate)
-app.post('/device/register', (req, res) => {
-  const deviceId = String(req.body?.deviceId || '').trim()
-  const enrollToken = String(req.body?.enrollToken || '').trim()
-  if (!deviceId) return res.status(400).json({ error: 'missing_device_id' })
-  if (!enrollToken || enrollToken !== ENROLL_TOKEN) return res.status(401).json({ error: 'unauthorized' })
-
-  const secret = crypto.randomBytes(24).toString('hex')
-  const secretHash = hashSecret(secret)
-
-  if (!USE_DB) {
-    return res.status(400).json({ error: 'db_disabled' })
-  }
-
-  const db = getDb()
-  db.device
-    .upsert({
-      where: { id: deviceId },
-      create: { id: deviceId, secretHash, lastSeenAt: new Date() },
-      update: { secretHash, lastSeenAt: new Date() }
-    })
-    .then(() => res.json({ ok: true, deviceId, secret }))
-    .catch(() => res.status(500).json({ error: 'server_error' }))
-})
-
-// Device auth: exchange deviceId + secret for a device JWT
-app.post('/device/auth', (req, res) => {
-  const deviceId = String(req.body?.deviceId || '').trim()
-  const secret = String(req.body?.secret || '').trim()
-  if (!deviceId) return res.status(400).json({ error: 'missing_device_id' })
-  if (!secret) return res.status(400).json({ error: 'missing_secret' })
-
-  if (!USE_DB) {
-    return res.status(400).json({ error: 'db_disabled' })
-  }
-
-  const db = getDb()
-  db.device
-    .findUnique({ where: { id: deviceId }, select: { secretHash: true } })
-    .then((d) => {
-      const expected = d?.secretHash
-      if (!expected) return res.status(401).json({ error: 'unauthorized' })
-
-      const got = hashSecret(secret)
-      if (!safeEq(expected, got)) return res.status(401).json({ error: 'unauthorized' })
-
-      const token = signDeviceJwt(deviceId)
-      res.json({ ok: true, token })
-    })
-    .catch(() => res.status(500).json({ error: 'server_error' }))
-})
-
-app.post('/ui/login', (req, res) => {
-  const password = String(req.body?.password || '');
-  if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'invalid_credentials' });
-  req.session.isAdmin = true;
-  res.json({ ok: true });
-});
-
-app.post('/ui/logout', (req, res) => {
-  if (!req.session) return res.json({ ok: true });
-  req.session.destroy(() => {
-    res.json({ ok: true });
-  });
-});
-
-app.get('/ui/me', (req, res) => {
-  res.json({ ok: true, isAdmin: isUiAuthed(req) });
-});
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
@@ -508,20 +409,6 @@ app.post('/admin/devices/:deviceId/commands/sendQueued', (req, res) => {
     .catch(() => res.status(500).json({ error: 'server_error' }))
 })
 
-app.post('/ui/devices/:deviceId/wake', (req, res) => {
-  if (!isUiAuthed(req)) return res.status(401).json({ error: 'unauthorized' });
-
-  const deviceId = String(req.params.deviceId);
-  if (!deviceId.trim()) return res.status(400).json({ ok: false, error: 'missing_device_id' })
-  const fcmToken = req.body?.fcmToken
-  wakeDeviceWithTokenOverride(deviceId, fcmToken)
-    .then((r) => {
-      if (!r.ok) return res.status(400).json(r)
-      res.json(r)
-    })
-    .catch(() => res.status(500).json({ error: 'server_error' }))
-})
-
 app.get('/admin/devices/:deviceId/status', (req, res) => {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   const deviceId = String(req.params.deviceId);
@@ -572,80 +459,6 @@ app.post('/admin/devices/:deviceId/command', (req, res) => {
     .catch(() => res.status(500).json({ error: 'server_error' }))
 });
 
-app.get('/ui/devices', (req, res) => {
-  if (!isUiAuthed(req)) return res.status(401).json({ error: 'unauthorized' });
-
-  getDevicesList()
-    .then((list) => res.json({ devices: list }))
-    .catch(() => res.status(500).json({ error: 'server_error' }))
-});
-
-app.post('/ui/devices/:deviceId/command', (req, res) => {
-  if (!isUiAuthed(req)) return res.status(401).json({ error: 'unauthorized' });
-
-  const deviceId = String(req.params.deviceId);
-  const device = devices.get(deviceId);
-  if (!USE_DB && !device) return res.status(404).json({ error: 'device_not_connected' });
-
-  const { type, payload } = req.body || {};
-  if (!type || typeof type !== 'string') return res.status(400).json({ error: 'missing_type' });
-
-  const cmdId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
-  const persist = !USE_DB
-    ? Promise.resolve()
-    : getDb().command.create({
-        data: {
-          id: cmdId,
-          deviceId,
-          type,
-          payload: payload ?? null,
-          status: device ? 'sent' : 'queued'
-        }
-      })
-
-  persist
-    .then(() => {
-      if (!device) return res.json({ ok: true, id: cmdId, queued: true })
-      const msg = JSON.stringify({ kind: 'command', id: cmdId, type, payload: payload ?? null });
-      try {
-        device.socket.send(msg);
-      } catch {
-        return res.status(500).json({ error: 'send_failed' });
-      }
-      res.json({ ok: true, id: cmdId });
-    })
-    .catch(() => res.status(500).json({ error: 'server_error' }))
-});
-
-app.get('/ui/devices/:deviceId/commands', (req, res) => {
-  if (!isUiAuthed(req)) return res.status(401).json({ error: 'unauthorized' });
-  if (!USE_DB) return res.status(400).json({ error: 'db_disabled' })
-
-  const deviceId = String(req.params.deviceId);
-  const status = String(req.query.status || 'queued')
-  if (status !== 'queued') return res.status(400).json({ error: 'unsupported_status' })
-
-  listQueuedCommands(deviceId)
-    .then((cmds) => res.json({ deviceId, commands: cmds ?? [] }))
-    .catch(() => res.status(500).json({ error: 'server_error' }))
-})
-
-app.post('/ui/devices/:deviceId/commands/sendQueued', (req, res) => {
-  if (!isUiAuthed(req)) return res.status(401).json({ error: 'unauthorized' });
-  if (!USE_DB) return res.status(400).json({ error: 'db_disabled' })
-
-  const deviceId = String(req.params.deviceId);
-  sendQueuedCommandsNow(deviceId)
-    .then((r) => {
-      if (!r.ok) {
-        if (r.error === 'device_not_connected') return res.status(409).json(r)
-        return res.status(400).json(r)
-      }
-      res.json(r)
-    })
-    .catch(() => res.status(500).json({ error: 'server_error' }))
-})
 
 const server = http.createServer(app);
 

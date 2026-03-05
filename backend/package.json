@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "express": "^4.19.2",
-    "express-session": "^1.17.3",
     "@prisma/client": "^6.4.1",
     "dotenv": "^16.4.5",
     "firebase-admin": "^13.0.2",

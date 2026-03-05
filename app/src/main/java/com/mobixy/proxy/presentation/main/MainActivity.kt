@@ -4,6 +4,8 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Bundle
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.pm.PackageManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -14,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -36,7 +39,6 @@ import com.google.firebase.messaging.FirebaseMessaging
 import com.mobixy.proxy.data.datasource.local.PrefsDataSource
 import com.mobixy.proxy.service.ControlAgentService
 import com.mobixy.proxy.service.LocalSocksProxyService
-import com.mobixy.proxy.service.ProxyForegroundService
 import com.mobixy.proxy.ui.theme.MobixyTheme
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -85,15 +87,14 @@ fun MainScreen(modifier: Modifier = Modifier) {
     var password by remember { mutableStateOf(prefs.getProxyCredentials()?.second.orEmpty()) }
     var savedCreds by remember { mutableStateOf(prefs.getProxyCredentials()) }
 
-    var backendHost by remember {
-        mutableStateOf(prefs.getBackendHost() ?: "192.168.29.44")
+    val deviceId = remember {
+        prefs.getDeviceId() ?: UUID.randomUUID().toString().also { prefs.setDeviceId(it) }
     }
-    var enrollToken by remember {
-        mutableStateOf(prefs.getBackendEnrollToken() ?: "dev-enroll-token")
-    }
-    var deviceId by remember {
-        mutableStateOf(prefs.getDeviceId() ?: UUID.randomUUID().toString())
-    }
+
+    var backendHost by remember { mutableStateOf(prefs.getBackendHost() ?: "192.168.29.44") }
+    var enrollToken by remember { mutableStateOf(prefs.getBackendEnrollToken() ?: "dev-enroll-token") }
+
+    var showAdvanced by remember { mutableStateOf(false) }
 
     var hasNotificationPermission by remember {
         mutableStateOf(
@@ -173,45 +174,63 @@ fun MainScreen(modifier: Modifier = Modifier) {
         Text(text = "SOCKS5: ${ip ?: "(no network)"}:${LocalSocksProxyService.DEFAULT_PORT}")
 
         OutlinedTextField(
-            value = backendHost,
-            onValueChange = { backendHost = it },
-            singleLine = true,
-            label = { Text("Backend Host") },
-        )
-
-        OutlinedTextField(
-            value = enrollToken,
-            onValueChange = { enrollToken = it },
-            singleLine = true,
-            label = { Text("Enroll Token") },
-        )
-
-        OutlinedTextField(
             value = deviceId,
-            onValueChange = { deviceId = it },
+            onValueChange = { },
             singleLine = true,
+            readOnly = true,
             label = { Text("Device ID") },
         )
 
         Button(
             onClick = {
-                prefs.setBackendHost(backendHost)
-                prefs.setBackendEnrollToken(enrollToken)
-                prefs.setDeviceId(deviceId)
+                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("deviceId", deviceId))
             }
         ) {
-            Text(text = "Save Backend Settings")
+            Text(text = "Copy Device ID")
         }
 
-        val backendConfigured = remember(backendHost, enrollToken, deviceId) {
-            backendHost.trim().isNotEmpty() && enrollToken.trim().isNotEmpty() && deviceId.trim().isNotEmpty()
+        Button(
+            onClick = {
+                showAdvanced = !showAdvanced
+            }
+        ) {
+            Text(text = if (showAdvanced) "Hide Advanced" else "Show Advanced")
+        }
+
+        if (showAdvanced) {
+            OutlinedTextField(
+                value = backendHost,
+                onValueChange = { backendHost = it },
+                singleLine = true,
+                label = { Text("Backend Host") },
+            )
+
+            OutlinedTextField(
+                value = enrollToken,
+                onValueChange = { enrollToken = it },
+                singleLine = true,
+                label = { Text("Enroll Token") },
+            )
+
+            Button(
+                onClick = {
+                    prefs.setBackendHost(backendHost)
+                    prefs.setBackendEnrollToken(enrollToken)
+                }
+            ) {
+                Text(text = "Save Backend Settings")
+            }
+        }
+
+        val backendConfigured = remember(backendHost, enrollToken) {
+            backendHost.trim().isNotEmpty() && enrollToken.trim().isNotEmpty()
         }
 
         Button(
             onClick = {
                 prefs.setBackendHost(backendHost)
                 prefs.setBackendEnrollToken(enrollToken)
-                prefs.setDeviceId(deviceId)
                 val intent = android.content.Intent(context, ControlAgentService::class.java)
                     .setAction(ControlAgentService.ACTION_CONNECT)
                 ContextCompat.startForegroundService(context, intent)
@@ -255,49 +274,6 @@ fun MainScreen(modifier: Modifier = Modifier) {
             }
         ) {
             Text(text = "Save Credentials")
-        }
-
-        val credsConfigured = remember(savedCreds) { savedCreds != null }
-
-        Button(
-            onClick = {
-                val intent = android.content.Intent(context, LocalSocksProxyService::class.java)
-                    .setAction(LocalSocksProxyService.ACTION_START)
-                ContextCompat.startForegroundService(context, intent)
-            },
-            enabled = credsConfigured && hasNotificationPermission
-        ) {
-            Text(text = "Start Local SOCKS5 (1080)")
-        }
-
-        Button(
-            onClick = {
-                val intent = android.content.Intent(context, LocalSocksProxyService::class.java)
-                    .setAction(LocalSocksProxyService.ACTION_STOP)
-                context.startService(intent)
-            }
-        ) {
-            Text(text = "Stop Local SOCKS5")
-        }
-
-        Button(
-            onClick = {
-                val intent = android.content.Intent(context, ProxyForegroundService::class.java)
-                    .setAction(ProxyForegroundService.ACTION_START)
-                ContextCompat.startForegroundService(context, intent)
-            }
-        ) {
-            Text(text = "Start Tunnel Agent (later phases)")
-        }
-
-        Button(
-            onClick = {
-                val intent = android.content.Intent(context, ProxyForegroundService::class.java)
-                    .setAction(ProxyForegroundService.ACTION_STOP)
-                context.startService(intent)
-            }
-        ) {
-            Text(text = "Stop Tunnel Agent")
         }
     }
 }
