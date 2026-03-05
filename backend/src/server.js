@@ -1,13 +1,40 @@
 import http from 'http';
 import express from 'express';
 import { WebSocketServer } from 'ws';
+import session from 'express-session';
 
 const PORT = Number(process.env.PORT || 8787);
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'dev-admin-token';
 const ENROLL_TOKEN = process.env.ENROLL_TOKEN || 'dev-enroll-token';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-session-secret';
+const UI_ORIGIN = process.env.UI_ORIGIN || 'http://localhost:5173';
 
 const app = express();
 app.use(express.json({ limit: '256kb' }));
+
+app.use(
+  session({
+    secret: SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: 'lax'
+    }
+  })
+);
+
+app.use((req, res, next) => {
+  if (req.path.startsWith('/ui/')) {
+    res.setHeader('Access-Control-Allow-Origin', UI_ORIGIN);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    if (req.method === 'OPTIONS') return res.status(204).end();
+  }
+  next();
+});
 
 /** @type {Map<string, { deviceId: string, connectedAt: number, lastSeenAt: number, socket: any, lastStatus: any }>} */
 const devices = new Map();
@@ -19,6 +46,28 @@ function isAuthorized(req) {
   if (!m) return false;
   return m[1] === ADMIN_TOKEN;
 }
+
+function isUiAuthed(req) {
+  return Boolean(req.session && req.session.isAdmin === true);
+}
+
+app.post('/ui/login', (req, res) => {
+  const password = String(req.body?.password || '');
+  if (password !== ADMIN_PASSWORD) return res.status(401).json({ error: 'invalid_credentials' });
+  req.session.isAdmin = true;
+  res.json({ ok: true });
+});
+
+app.post('/ui/logout', (req, res) => {
+  if (!req.session) return res.json({ ok: true });
+  req.session.destroy(() => {
+    res.json({ ok: true });
+  });
+});
+
+app.get('/ui/me', (req, res) => {
+  res.json({ ok: true, isAdmin: isUiAuthed(req) });
+});
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
@@ -65,6 +114,38 @@ app.post('/admin/devices/:deviceId/command', (req, res) => {
     return res.status(500).json({ error: 'send_failed' });
   }
 
+  res.json({ ok: true, id: cmdId });
+});
+
+app.get('/ui/devices', (req, res) => {
+  if (!isUiAuthed(req)) return res.status(401).json({ error: 'unauthorized' });
+  const list = Array.from(devices.values()).map((d) => ({
+    deviceId: d.deviceId,
+    connectedAt: d.connectedAt,
+    lastSeenAt: d.lastSeenAt,
+    online: true,
+    status: d.lastStatus ?? null
+  }));
+  res.json({ devices: list });
+});
+
+app.post('/ui/devices/:deviceId/command', (req, res) => {
+  if (!isUiAuthed(req)) return res.status(401).json({ error: 'unauthorized' });
+
+  const deviceId = String(req.params.deviceId);
+  const device = devices.get(deviceId);
+  if (!device) return res.status(404).json({ error: 'device_not_connected' });
+
+  const { type, payload } = req.body || {};
+  if (!type || typeof type !== 'string') return res.status(400).json({ error: 'missing_type' });
+
+  const cmdId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const msg = JSON.stringify({ kind: 'command', id: cmdId, type, payload: payload ?? null });
+  try {
+    device.socket.send(msg);
+  } catch {
+    return res.status(500).json({ error: 'send_failed' });
+  }
   res.json({ ok: true, id: cmdId });
 });
 
