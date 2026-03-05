@@ -4,6 +4,8 @@ import android.app.Notification
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.mobixy.proxy.R
@@ -173,6 +175,13 @@ class ControlAgentService : Service() {
                 ws.send(ack.toString())
 
                 sendStatus(ws)
+
+                Handler(Looper.getMainLooper()).postDelayed({
+                    runCatching { sendStatus(ws) }
+                }, 500)
+                Handler(Looper.getMainLooper()).postDelayed({
+                    runCatching { sendStatus(ws) }
+                }, 1500)
             }
             else -> {
             }

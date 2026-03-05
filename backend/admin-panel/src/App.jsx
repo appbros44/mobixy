@@ -19,6 +19,7 @@ export default function App() {
 
   const [devices, setDevices] = useState([]);
   const [busyDeviceId, setBusyDeviceId] = useState('');
+  const [selectedAction, setSelectedAction] = useState({});
 
   const sortedDevices = useMemo(() => {
     return [...devices].sort((a, b) => String(a.deviceId).localeCompare(String(b.deviceId)));
@@ -122,8 +123,14 @@ export default function App() {
   async function runCommand(deviceId, type, payload) {
     setError('');
     setBusyDeviceId(deviceId);
+    if (type === 'proxy_start') {
+      setSelectedAction((prev) => ({ ...prev, [deviceId]: 'start' }));
+    } else if (type === 'proxy_stop') {
+      setSelectedAction((prev) => ({ ...prev, [deviceId]: 'stop' }));
+    }
     try {
       await uiCommand(deviceId, type, payload);
+      await new Promise((r) => setTimeout(r, 700));
       await refreshDevices();
     } catch (e) {
       setError(e.message || String(e));
@@ -214,6 +221,7 @@ export default function App() {
               const status = d.status || {};
               const socksRunning = Boolean(status.socksRunning);
               const busy = busyDeviceId === d.deviceId;
+              const sel = selectedAction[d.deviceId] || (socksRunning ? 'start' : 'stop');
 
               return (
                 <tr key={d.deviceId}>
@@ -237,14 +245,14 @@ export default function App() {
                         Wake
                       </button>
                       <button
-                        className="button"
+                        className={sel === 'start' ? 'button' : 'button secondary'}
                         disabled={busy}
                         onClick={() => runCommand(d.deviceId, 'proxy_start', {})}
                       >
                         Start
                       </button>
                       <button
-                        className="button secondary"
+                        className={sel === 'stop' ? 'button' : 'button secondary'}
                         disabled={busy}
                         onClick={() => runCommand(d.deviceId, 'proxy_stop', {})}
                       >
