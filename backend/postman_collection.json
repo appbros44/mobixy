@@ -14,6 +14,10 @@
       "value": "dev-admin-token"
     },
     {
+      "key": "adminJwt",
+      "value": ""
+    },
+    {
       "key": "uiPassword",
       "value": "admin"
     },
@@ -40,13 +44,40 @@
       }
     },
     {
+      "name": "Auth - Admin Login (JWT)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"admin@mobixy.local\",\n  \"password\": \"{{uiPassword}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "login"
+          ]
+        }
+      }
+    },
+    {
       "name": "Admin - List Devices",
       "request": {
         "method": "GET",
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{adminToken}}",
+            "value": "Bearer {{adminJwt}}",
             "type": "text"
           }
         ],
@@ -69,7 +100,7 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{adminToken}}",
+            "value": "Bearer {{adminJwt}}",
             "type": "text"
           }
         ],
@@ -94,7 +125,7 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{adminToken}}",
+            "value": "Bearer {{adminJwt}}",
             "type": "text"
           }
         ],
@@ -125,7 +156,7 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{adminToken}}",
+            "value": "Bearer {{adminJwt}}",
             "type": "text"
           }
         ],
@@ -145,13 +176,47 @@
       }
     },
     {
+      "name": "Admin - Wake Device (FCM)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminJwt}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"fcmToken\": \"\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/admin/devices/{{deviceId}}/wake",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "admin",
+            "devices",
+            "{{deviceId}}",
+            "wake"
+          ]
+        }
+      }
+    },
+    {
       "name": "Admin - Command: proxy_start",
       "request": {
         "method": "POST",
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{adminToken}}",
+            "value": "Bearer {{adminJwt}}",
             "type": "text"
           },
           {
@@ -185,7 +250,7 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{adminToken}}",
+            "value": "Bearer {{adminJwt}}",
             "type": "text"
           },
           {
@@ -219,7 +284,7 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{adminToken}}",
+            "value": "Bearer {{adminJwt}}",
             "type": "text"
           },
           {
@@ -253,7 +318,7 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{adminToken}}",
+            "value": "Bearer {{adminJwt}}",
             "type": "text"
           },
           {
@@ -382,6 +447,35 @@
             "{{deviceId}}",
             "commands",
             "sendQueued"
+          ]
+        }
+      }
+    },
+    {
+      "name": "UI - Wake Device (FCM)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"fcmToken\": \"\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/ui/devices/{{deviceId}}/wake",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "ui",
+            "devices",
+            "{{deviceId}}",
+            "wake"
           ]
         }
       }

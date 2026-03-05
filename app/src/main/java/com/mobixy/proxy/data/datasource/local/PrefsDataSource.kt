@@ -56,6 +56,24 @@ class PrefsDataSource(appContext: Context) {
         return token.ifEmpty { null }
     }
 
+    fun setDeviceSecret(secret: String) {
+        prefs.edit().putString(KEY_DEVICE_SECRET, secret.trim()).apply()
+    }
+
+    fun getDeviceSecret(): String? {
+        val s = prefs.getString(KEY_DEVICE_SECRET, null)?.trim().orEmpty()
+        return s.ifEmpty { null }
+    }
+
+    fun setDeviceJwt(token: String) {
+        prefs.edit().putString(KEY_DEVICE_JWT, token.trim()).apply()
+    }
+
+    fun getDeviceJwt(): String? {
+        val t = prefs.getString(KEY_DEVICE_JWT, null)?.trim().orEmpty()
+        return t.ifEmpty { null }
+    }
+
     companion object {
         private const val PREFS_NAME = "mobixy_prefs"
         private const val KEY_PROXY_USERNAME = "proxy_username"
@@ -65,5 +83,7 @@ class PrefsDataSource(appContext: Context) {
         private const val KEY_BACKEND_ENROLL_TOKEN = "backend_enroll_token"
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_FCM_TOKEN = "fcm_token"
+        private const val KEY_DEVICE_SECRET = "device_secret"
+        private const val KEY_DEVICE_JWT = "device_jwt"
     }
 }

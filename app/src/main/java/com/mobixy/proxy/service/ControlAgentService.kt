@@ -10,10 +10,13 @@ import com.mobixy.proxy.R
 import com.mobixy.proxy.core.constants.AppConstants
 import com.mobixy.proxy.data.datasource.local.PrefsDataSource
 import okhttp3.OkHttpClient
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
@@ -50,33 +53,94 @@ class ControlAgentService : Service() {
             return
         }
 
-        val url = "ws://$host:${DEFAULT_PORT}/ws/device?deviceId=$deviceId&token=$enrollToken"
-        val request = Request.Builder().url(url).build()
-
-        webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.i(TAG, "Connected")
-                sendStatus(webSocket)
+        Thread {
+            val jwt = ensureDeviceJwt(prefs, host, enrollToken, deviceId)
+            val url = if (!jwt.isNullOrBlank()) {
+                "ws://$host:${DEFAULT_PORT}/ws/device?deviceId=$deviceId&jwt=${encode(jwt)}"
+            } else {
+                "ws://$host:${DEFAULT_PORT}/ws/device?deviceId=$deviceId&token=$enrollToken"
             }
 
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                handleMessage(webSocket, text)
-            }
+            val request = Request.Builder().url(url).build()
 
-            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                webSocket.close(code, reason)
-            }
+            webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: Response) {
+                    Log.i(TAG, "Connected")
+                    sendStatus(webSocket)
+                }
 
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e(TAG, "WebSocket failure", t)
-                disconnect()
-            }
+                override fun onMessage(webSocket: WebSocket, text: String) {
+                    handleMessage(webSocket, text)
+                }
 
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.i(TAG, "Closed: $code $reason")
-                disconnect()
+                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                    webSocket.close(code, reason)
+                }
+
+                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                    Log.e(TAG, "WebSocket failure", t)
+                    disconnect()
+                }
+
+                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                    Log.i(TAG, "Closed: $code $reason")
+                    disconnect()
+                }
+            })
+        }.start()
+    }
+
+    private fun ensureDeviceJwt(prefs: PrefsDataSource, host: String, enrollToken: String, deviceId: String): String? {
+        val existing = prefs.getDeviceJwt()
+        if (!existing.isNullOrBlank()) return existing
+
+        val base = "http://$host:${DEFAULT_PORT}"
+
+        val secret = prefs.getDeviceSecret() ?: run {
+            val body = JSONObject()
+            body.put("deviceId", deviceId)
+            body.put("enrollToken", enrollToken)
+
+            val req = Request.Builder()
+                .url("$base/device/register")
+                .post(body.toString().toRequestBody(JSON_MEDIA_TYPE))
+                .build()
+
+            val resp = runCatching { okHttpClient.newCall(req).execute() }.getOrNull() ?: return null
+            resp.use {
+                if (!it.isSuccessful) return null
+                val txt = it.body?.string().orEmpty()
+                val json = runCatching { JSONObject(txt) }.getOrNull() ?: return null
+                val s = json.optString("secret").trim()
+                if (s.isBlank()) return null
+                prefs.setDeviceSecret(s)
+                s
             }
-        })
+        }
+
+        val body = JSONObject()
+        body.put("deviceId", deviceId)
+        body.put("secret", secret)
+
+        val req = Request.Builder()
+            .url("$base/device/auth")
+            .post(body.toString().toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+
+        val resp = runCatching { okHttpClient.newCall(req).execute() }.getOrNull() ?: return null
+        resp.use {
+            if (!it.isSuccessful) return null
+            val txt = it.body?.string().orEmpty()
+            val json = runCatching { JSONObject(txt) }.getOrNull() ?: return null
+            val t = json.optString("token").trim()
+            if (t.isBlank()) return null
+            prefs.setDeviceJwt(t)
+            return t
+        }
+    }
+
+    private fun encode(s: String): String {
+        return java.net.URLEncoder.encode(s, "UTF-8")
     }
 
     private fun handleMessage(ws: WebSocket, text: String) {
@@ -170,6 +234,8 @@ class ControlAgentService : Service() {
         const val ACTION_DISCONNECT = "com.mobixy.proxy.service.ControlAgentService.DISCONNECT"
 
         const val DEFAULT_PORT = 8787
+
+        private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
         private const val TAG = "ControlAgentService"
     }

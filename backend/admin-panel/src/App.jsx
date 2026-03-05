@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { uiCommand, uiDevices, uiLogin, uiLogout, uiMe } from './api.js';
+import { listQueuedCommands, sendQueuedNow, uiCommand, uiDevices, uiLogin, uiLogout, uiMe, wakeDevice } from './api.js';
 
 function formatTs(ms) {
   if (!ms) return '-';
@@ -13,6 +13,7 @@ function formatTs(ms) {
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
@@ -28,14 +29,41 @@ export default function App() {
     setDevices(data.devices || []);
   }
 
+  async function runWake(deviceId) {
+    setError('');
+    setBusyDeviceId(deviceId);
+    try {
+      await wakeDevice(deviceId)
+      await refreshDevices();
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setBusyDeviceId('');
+    }
+  }
+
+  async function runSendQueued(deviceId) {
+    setError('');
+    setBusyDeviceId(deviceId);
+    try {
+      await sendQueuedNow(deviceId)
+      await refreshDevices();
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setBusyDeviceId('');
+    }
+  }
+
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
         const me = await uiMe();
         if (!mounted) return;
-        setIsAdmin(Boolean(me.isAdmin));
-        if (me.isAdmin) {
+        const authed = Boolean(me && me.role === 'admin');
+        setIsAdmin(authed);
+        if (authed) {
           await refreshDevices();
         }
       } catch (e) {
@@ -65,8 +93,9 @@ export default function App() {
     setError('');
     setLoading(true);
     try {
-      await uiLogin(password);
+      await uiLogin(email, password);
       setIsAdmin(true);
+      setEmail('');
       setPassword('');
       await refreshDevices();
     } catch (e2) {
@@ -121,6 +150,15 @@ export default function App() {
           <div className="title">Mobixy Admin</div>
           <div className="muted">Login to manage connected devices.</div>
           <form onSubmit={onLogin} className="form">
+            <label className="label">Admin Email</label>
+            <input
+              className="input"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="admin@mobixy.local"
+              autoFocus
+            />
             <label className="label">Admin Password</label>
             <input
               className="input"
@@ -128,9 +166,8 @@ export default function App() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter admin password"
-              autoFocus
             />
-            <button className="button" type="submit" disabled={!password.trim()}>
+            <button className="button" type="submit" disabled={!email.trim() || !password.trim()}>
               Login
             </button>
           </form>
@@ -193,6 +230,13 @@ export default function App() {
                   <td>
                     <div className="row">
                       <button
+                        className="button secondary"
+                        disabled={busy}
+                        onClick={() => runWake(d.deviceId)}
+                      >
+                        Wake
+                      </button>
+                      <button
                         className="button"
                         disabled={busy}
                         onClick={() => runCommand(d.deviceId, 'proxy_start', {})}
@@ -205,6 +249,13 @@ export default function App() {
                         onClick={() => runCommand(d.deviceId, 'proxy_stop', {})}
                       >
                         Stop
+                      </button>
+                      <button
+                        className="button secondary"
+                        disabled={busy}
+                        onClick={() => runSendQueued(d.deviceId)}
+                      >
+                        SendQueued
                       </button>
                       <button
                         className="button secondary"
