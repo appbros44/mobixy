@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.core.content.ContextCompat
+import com.google.firebase.messaging.FirebaseMessaging
 import com.mobixy.proxy.data.datasource.local.PrefsDataSource
 import com.mobixy.proxy.service.ControlAgentService
 import com.mobixy.proxy.service.LocalSocksProxyService
@@ -114,6 +115,17 @@ fun MainScreen(modifier: Modifier = Modifier) {
     LaunchedEffect(Unit) {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
             notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        runCatching {
+            FirebaseMessaging.getInstance().token
+                .addOnSuccessListener { token ->
+                    if (!token.isNullOrBlank()) {
+                        prefs.setFcmToken(token)
+                    }
+                }
         }
     }
 

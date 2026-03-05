@@ -47,6 +47,15 @@ class PrefsDataSource(appContext: Context) {
         return id.ifEmpty { null }
     }
 
+    fun setFcmToken(token: String) {
+        prefs.edit().putString(KEY_FCM_TOKEN, token.trim()).apply()
+    }
+
+    fun getFcmToken(): String? {
+        val token = prefs.getString(KEY_FCM_TOKEN, null)?.trim().orEmpty()
+        return token.ifEmpty { null }
+    }
+
     companion object {
         private const val PREFS_NAME = "mobixy_prefs"
         private const val KEY_PROXY_USERNAME = "proxy_username"
@@ -55,5 +64,6 @@ class PrefsDataSource(appContext: Context) {
         private const val KEY_BACKEND_HOST = "backend_host"
         private const val KEY_BACKEND_ENROLL_TOKEN = "backend_enroll_token"
         private const val KEY_DEVICE_ID = "device_id"
+        private const val KEY_FCM_TOKEN = "fcm_token"
     }
 }

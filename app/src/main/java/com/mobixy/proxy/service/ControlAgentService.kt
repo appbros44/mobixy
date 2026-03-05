@@ -136,6 +136,7 @@ class ControlAgentService : Service() {
         status.put("socksPort", LocalSocksProxyService.DEFAULT_PORT)
         status.put("socksRunning", LocalSocksProxyService.isRunning)
         status.put("credsConfigured", prefs.getProxyCredentials() != null)
+        prefs.getFcmToken()?.let { status.put("fcmToken", it) }
         ws.send(status.toString())
     }
 

@@ -5,11 +5,20 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy"
   },
   "dependencies": {
     "express": "^4.19.2",
     "express-session": "^1.17.3",
+    "@prisma/client": "^6.4.1",
+    "dotenv": "^16.4.5",
+    "pg": "^8.13.3",
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.4.1"
   }
 }

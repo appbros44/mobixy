@@ -14,6 +14,10 @@
       "value": "dev-admin-token"
     },
     {
+      "key": "uiPassword",
+      "value": "admin"
+    },
+    {
       "key": "deviceId",
       "value": ""
     }
@@ -54,6 +58,88 @@
           "path": [
             "admin",
             "devices"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Admin - Device Status",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/admin/devices/{{deviceId}}/status",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "admin",
+            "devices",
+            "{{deviceId}}",
+            "status"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Admin - List Queued Commands",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/admin/devices/{{deviceId}}/commands?status=queued",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "admin",
+            "devices",
+            "{{deviceId}}",
+            "commands"
+          ],
+          "query": [
+            {
+              "key": "status",
+              "value": "queued"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Admin - Send Queued Commands Now",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{adminToken}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/admin/devices/{{deviceId}}/commands/sendQueued",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "admin",
+            "devices",
+            "{{deviceId}}",
+            "commands",
+            "sendQueued"
           ]
         }
       }
@@ -187,6 +273,141 @@
           ],
           "path": [
             "admin",
+            "devices",
+            "{{deviceId}}",
+            "command"
+          ]
+        }
+      }
+    },
+    {
+      "name": "UI - Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"{{uiPassword}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/ui/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "ui",
+            "login"
+          ]
+        }
+      }
+    },
+    {
+      "name": "UI - Me",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/ui/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "ui",
+            "me"
+          ]
+        }
+      }
+    },
+    {
+      "name": "UI - List Devices",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/ui/devices",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "ui",
+            "devices"
+          ]
+        }
+      }
+    },
+    {
+      "name": "UI - List Queued Commands",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/ui/devices/{{deviceId}}/commands?status=queued",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "ui",
+            "devices",
+            "{{deviceId}}",
+            "commands"
+          ],
+          "query": [
+            {
+              "key": "status",
+              "value": "queued"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "UI - Send Queued Commands Now",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/ui/devices/{{deviceId}}/commands/sendQueued",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "ui",
+            "devices",
+            "{{deviceId}}",
+            "commands",
+            "sendQueued"
+          ]
+        }
+      }
+    },
+    {
+      "name": "UI - Command: proxy_start",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"type\": \"proxy_start\",\n  \"payload\": {}\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/ui/devices/{{deviceId}}/command",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "ui",
             "devices",
             "{{deviceId}}",
             "command"
