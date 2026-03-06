@@ -61,6 +61,7 @@ import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessaging
 import com.mobixy.proxy.R
 import com.mobixy.proxy.data.datasource.local.PrefsDataSource
+import com.mobixy.proxy.games.tictactoe.TicTacToeScreen
 import com.mobixy.proxy.service.ControlAgentService
 import com.mobixy.proxy.service.LocalSocksProxyService
 import com.mobixy.proxy.ui.theme.MobixyTheme
@@ -181,7 +182,7 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
         }
     }
 
-    var backendHost by remember { mutableStateOf(prefs?.getBackendHost() ?: "192.168.29.44") }
+    var backendHost by remember { mutableStateOf(prefs?.getBackendHost() ?: "192.168.29.43") }
     var enrollToken by remember { mutableStateOf(prefs?.getBackendEnrollToken() ?: "dev-enroll-token") }
 
     var showAdvanced by remember { mutableStateOf(false) }
@@ -452,6 +453,15 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
                 }
             }
         }
+
+        return
+    }
+
+    if (selectedGame == "TicTacToe") {
+        TicTacToeScreen(
+            modifier = modifier,
+            onBack = { selectedGame = "" }
+        )
 
         return
     }
