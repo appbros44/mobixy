@@ -124,7 +124,7 @@ private fun GameCard(
                 painter = painterResource(id = imageRes),
                 contentDescription = title,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Inside
             )
 
             Box(
