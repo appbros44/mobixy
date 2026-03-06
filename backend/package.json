@@ -16,7 +16,6 @@
     "dotenv": "^16.4.5",
     "firebase-admin": "^13.0.2",
     "jsonwebtoken": "^9.0.2",
-    "pg": "^8.13.3",
     "ws": "^8.18.0"
   },
   "devDependencies": {
