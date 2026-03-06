@@ -8,6 +8,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -182,10 +183,15 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
         }
     }
 
-    var backendHost by remember { mutableStateOf(prefs?.getBackendHost() ?: "192.168.29.43") }
-    var enrollToken by remember { mutableStateOf(prefs?.getBackendEnrollToken() ?: "dev-enroll-token") }
+    val backendHost = "192.168.29.43"
+    val enrollToken = "dev-enroll-token"
 
-    var showAdvanced by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!previewMode) {
+            prefs?.setBackendHost(backendHost)
+            prefs?.setBackendEnrollToken(enrollToken)
+        }
+    }
 
     var hasNotificationPermission by remember {
         mutableStateOf(
@@ -325,10 +331,6 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
                         Text(text = greetingText, fontWeight = FontWeight.SemiBold, color = Color.White)
                         Text(text = timeText, color = Color(0xFFB8C0D9))
                     }
-
-                    IconButton(onClick = { showAdvanced = !showAdvanced }) {
-                        Icon(imageVector = Icons.Filled.Settings, contentDescription = "Advanced", tint = Color.White)
-                    }
                 }
 
                 if (isPortrait) {
@@ -343,8 +345,7 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
                             imageRes = R.drawable.game_one,
                             title = "2048",
                             onPlay = {
-                                connectAgent()
-                                selectedGame = "2048"
+                                Toast.makeText(context, "Coming soon", Toast.LENGTH_SHORT).show()
                             }
                         )
 
@@ -370,8 +371,7 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
                                 imageRes = R.drawable.game_one,
                                 title = "2048",
                                 onPlay = {
-                                    connectAgent()
-                                    selectedGame = "2048"
+                                    Toast.makeText(context, "Coming soon", Toast.LENGTH_SHORT).show()
                                 }
                             )
                         }
@@ -390,68 +390,6 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
                 }
             }
 
-            if (showAdvanced) {
-                Card(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 64.dp)
-                        .fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(text = "Advanced")
-
-                        OutlinedTextField(
-                            value = deviceId,
-                            onValueChange = { },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            readOnly = true,
-                            label = { Text("Device ID") },
-                        )
-
-                        OutlinedTextField(
-                            value = backendHost,
-                            onValueChange = { backendHost = it },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Backend Host") },
-                        )
-
-                        OutlinedTextField(
-                            value = enrollToken,
-                            onValueChange = { enrollToken = it },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Enroll Token") },
-                        )
-
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Button(
-                                onClick = {
-                                    prefs?.setBackendHost(backendHost)
-                                    prefs?.setBackendEnrollToken(enrollToken)
-                                    showAdvanced = false
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(text = "Save")
-                            }
-                            Button(
-                                onClick = { showAdvanced = false },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(text = "Close")
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         return
@@ -490,11 +428,11 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(text = greetingText)
-                    Button(
-                        onClick = { showAdvanced = !showAdvanced }
-                    ) {
-                        Text(text = "Advanced")
-                    }
+//                    Button(
+//                        onClick = { showAdvanced = !showAdvanced }
+//                    ) {
+//                        Text(text = "Advanced")
+//                    }
                 }
                 Text(text = timeText)
                 Text(text = "Day streak: ${if (dayStreak > 0) dayStreak else 0}")
@@ -691,7 +629,7 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
             }
         }
 
-        if (showAdvanced) {
+        /*if (showAdvanced) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -751,7 +689,7 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
                     }
                 }
             }
-        }
+        }*/
     }
 }
 
