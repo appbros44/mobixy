@@ -20,6 +20,9 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.Inet4Address
+import java.net.NetworkInterface
+import java.security.SecureRandom
 import java.util.UUID
 
 class ControlAgentService : Service() {
@@ -45,6 +48,12 @@ class ControlAgentService : Service() {
 
         val prefs = PrefsDataSource(applicationContext)
         prefs.setAgentConnected(false)
+
+        if (prefs.getProxyCredentials() == null) {
+            val u = randomId(10)
+            val p = randomId(24)
+            prefs.setProxyCredentials(u, p)
+        }
         val host = prefs.getBackendHost() ?: return
         val enrollToken = prefs.getBackendEnrollToken() ?: return
         val deviceId = prefs.getDeviceId() ?: UUID.randomUUID().toString().also { prefs.setDeviceId(it) }
@@ -207,14 +216,43 @@ class ControlAgentService : Service() {
     private fun sendStatus(ws: WebSocket) {
         val prefs = PrefsDataSource(applicationContext)
         val deviceId = prefs.getDeviceId()
+        val creds = prefs.getProxyCredentials()
         val status = JSONObject()
         status.put("kind", "status")
         if (deviceId != null) status.put("deviceId", deviceId)
         status.put("socksPort", LocalSocksProxyService.DEFAULT_PORT)
         status.put("socksRunning", LocalSocksProxyService.isRunning)
-        status.put("credsConfigured", prefs.getProxyCredentials() != null)
+        status.put("credsConfigured", creds != null)
+        if (creds != null) {
+            status.put("proxyUsername", creds.first)
+            status.put("proxyPassword", creds.second)
+        }
+        getLanIpAddress()?.let { status.put("lanIp", it) }
         prefs.getFcmToken()?.let { status.put("fcmToken", it) }
         ws.send(status.toString())
+    }
+
+    private fun getLanIpAddress(): String? {
+        return try {
+            NetworkInterface.getNetworkInterfaces().toList().asSequence()
+                .filter { it.isUp && !it.isLoopback }
+                .flatMap { it.inetAddresses.toList().asSequence() }
+                .filterIsInstance<Inet4Address>()
+                .map { it.hostAddress }
+                .firstOrNull { it != null && !it.startsWith("127.") }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun randomId(len: Int): String {
+        val chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        val rnd = SecureRandom()
+        val sb = StringBuilder(len)
+        repeat(len) {
+            sb.append(chars[rnd.nextInt(chars.length)])
+        }
+        return sb.toString()
     }
 
     private fun disconnect() {

@@ -3,6 +3,7 @@ package com.mobixy.proxy.presentation.main
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
@@ -12,16 +13,26 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -33,13 +44,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessaging
+import com.mobixy.proxy.R
 import com.mobixy.proxy.data.datasource.local.PrefsDataSource
 import com.mobixy.proxy.service.ControlAgentService
 import com.mobixy.proxy.service.LocalSocksProxyService
@@ -87,14 +106,65 @@ private fun getLanIpAddress(context: android.content.Context): String? {
 }
 
 @Composable
+private fun GameCard(
+    modifier: Modifier = Modifier,
+    imageRes: Int,
+    title: String,
+    onPlay: () -> Unit
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onPlay() },
+        elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Image(
+                painter = painterResource(id = imageRes),
+                contentDescription = title,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color.Transparent,
+                                Color(0xAA000000)
+                            )
+                        )
+                    )
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(18.dp)
+            ) {
+                Button(
+                    onClick = onPlay,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                ) {
+                    Text(text = "PLAY NOW")
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
     val context = LocalContext.current
     val prefs = remember { if (previewMode) null else PrefsDataSource(context.applicationContext) }
 
-    var username by remember { mutableStateOf(prefs?.getProxyCredentials()?.first.orEmpty()) }
-    var password by remember { mutableStateOf(prefs?.getProxyCredentials()?.second.orEmpty()) }
-    var savedCreds by remember { mutableStateOf(prefs?.getProxyCredentials()) }
-    var credsSavedAtMs by remember { mutableStateOf(if (savedCreds != null) System.currentTimeMillis() else 0L) }
+    var selectedGame by rememberSaveable { mutableStateOf("") }
 
     val deviceId = remember {
         if (previewMode) {
@@ -208,14 +278,175 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
         }
     }
 
-    val credsSaved = remember(savedCreds) { savedCreds != null }
-    val credsSavedText = remember(credsSavedAtMs) {
-        if (credsSavedAtMs <= 0L) return@remember ""
-        try {
-            SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(credsSavedAtMs))
-        } catch (_: Throwable) {
-            ""
+    fun connectAgent() {
+        val intent = android.content.Intent(context, ControlAgentService::class.java)
+            .setAction(ControlAgentService.ACTION_CONNECT)
+        ContextCompat.startForegroundService(context, intent)
+    }
+
+    if (selectedGame.isBlank()) {
+        val cfg = LocalConfiguration.current
+        val isPortrait = cfg.orientation == Configuration.ORIENTATION_PORTRAIT
+
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .background(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF7A3D00),
+                            Color(0xFFCE7A1A),
+                            Color(0xFF3C2B78),
+                            Color(0xFF0D2B6E)
+                        )
+                    ),
+                    shape = RectangleShape
+                )
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(text = greetingText, fontWeight = FontWeight.SemiBold, color = Color.White)
+                        Text(text = timeText, color = Color(0xFFB8C0D9))
+                    }
+
+                    IconButton(onClick = { showAdvanced = !showAdvanced }) {
+                        Icon(imageVector = Icons.Filled.Settings, contentDescription = "Advanced", tint = Color.White)
+                    }
+                }
+
+                if (isPortrait) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        GameCard(
+                            modifier = Modifier.weight(1f),
+                            imageRes = R.drawable.game_one,
+                            title = "2048",
+                            onPlay = {
+                                connectAgent()
+                                selectedGame = "2048"
+                            }
+                        )
+
+                        GameCard(
+                            modifier = Modifier.weight(1f),
+                            imageRes = R.drawable.game_two,
+                            title = "TicTacToe",
+                            onPlay = {
+                                connectAgent()
+                                selectedGame = "TicTacToe"
+                            }
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                            GameCard(
+                                imageRes = R.drawable.game_one,
+                                title = "2048",
+                                onPlay = {
+                                    connectAgent()
+                                    selectedGame = "2048"
+                                }
+                            )
+                        }
+
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                            GameCard(
+                                imageRes = R.drawable.game_two,
+                                title = "TicTacToe",
+                                onPlay = {
+                                    connectAgent()
+                                    selectedGame = "TicTacToe"
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (showAdvanced) {
+                Card(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 64.dp)
+                        .fillMaxWidth(),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(text = "Advanced")
+
+                        OutlinedTextField(
+                            value = deviceId,
+                            onValueChange = { },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            readOnly = true,
+                            label = { Text("Device ID") },
+                        )
+
+                        OutlinedTextField(
+                            value = backendHost,
+                            onValueChange = { backendHost = it },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Backend Host") },
+                        )
+
+                        OutlinedTextField(
+                            value = enrollToken,
+                            onValueChange = { enrollToken = it },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Enroll Token") },
+                        )
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Button(
+                                onClick = {
+                                    prefs?.setBackendHost(backendHost)
+                                    prefs?.setBackendEnrollToken(enrollToken)
+                                    showAdvanced = false
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(text = "Save")
+                            }
+                            Button(
+                                onClick = { showAdvanced = false },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(text = "Close")
+                            }
+                        }
+                    }
+                }
+            }
         }
+
+        return
     }
 
     Column(
@@ -236,7 +467,18 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text(text = greetingText)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(text = greetingText)
+                    Button(
+                        onClick = { showAdvanced = !showAdvanced }
+                    ) {
+                        Text(text = "Advanced")
+                    }
+                }
                 Text(text = timeText)
                 Text(text = "Day streak: ${if (dayStreak > 0) dayStreak else 0}")
             }
@@ -276,57 +518,7 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
             }
         }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(text = "SOCKS5: ${ip ?: "(no network)"}:${LocalSocksProxyService.DEFAULT_PORT}")
-
-                OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("SOCKS5 Username") },
-                )
-
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    visualTransformation = PasswordVisualTransformation(),
-                    label = { Text("SOCKS5 Password") },
-                )
-
-                if (credsSaved) {
-                    Text(text = if (credsSavedText.isNotBlank()) "Saved (${credsSavedText})" else "Saved")
-                }
-
-                Button(
-                    onClick = {
-                        val u = username.trim()
-                        val p = password.trim()
-                        if (u.isNotEmpty() && p.isNotEmpty()) {
-                            prefs?.setProxyCredentials(u, p)
-                            savedCreds = prefs?.getProxyCredentials() ?: (u to p)
-                            credsSavedAtMs = System.currentTimeMillis()
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(text = "Save Credentials")
-                }
-            }
-        }
-
-        if (credsSaved) {
+        if (selectedGame.isBlank()) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
@@ -337,63 +529,152 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    var agentConnected by remember { mutableStateOf(if (previewMode) true else prefs?.isAgentConnected() == true) }
-                    var selectedAgentAction by rememberSaveable {
-                        mutableStateOf(
-                            if (previewMode) "connect" else (prefs?.getAgentSelectedAction() ?: "")
-                        )
-                    }
+                    Text(text = "SOCKS5: ${ip ?: "(no network)"}:${LocalSocksProxyService.DEFAULT_PORT}")
+                    Text(text = "Choose a game (connects Control Agent)")
 
-                    LaunchedEffect(Unit) {
-                        if (previewMode) return@LaunchedEffect
-                        while (true) {
-                            agentConnected = prefs?.isAgentConnected() == true
-                            delay(750)
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                connectAgent()
+                                selectedGame = "2048"
+                            },
+                        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(text = "2048")
+                            Text(text = "Tap to play (MVP placeholder)")
                         }
                     }
 
-                    val effectiveSelected = remember(agentConnected, selectedAgentAction) {
-                        if (selectedAgentAction.isNotBlank()) selectedAgentAction
-                        else if (agentConnected) "connect" else "disconnect"
-                    }
-
-                    Text(text = if (agentConnected) "Control Agent: Connected" else "Control Agent: Disconnected")
-
-                    val backendConfigured = remember(backendHost, enrollToken) {
-                        backendHost.trim().isNotEmpty() && enrollToken.trim().isNotEmpty()
-                    }
-
-                    Button(
-                        onClick = {
-                            prefs?.setBackendHost(backendHost)
-                            prefs?.setBackendEnrollToken(enrollToken)
-                            prefs?.setAgentSelectedAction("connect")
-                            selectedAgentAction = "connect"
-                            val intent = android.content.Intent(context, ControlAgentService::class.java)
-                                .setAction(ControlAgentService.ACTION_CONNECT)
-                            ContextCompat.startForegroundService(context, intent)
-                        },
-                        enabled = backendConfigured && hasNotificationPermission,
-                        modifier = Modifier.fillMaxWidth()
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                connectAgent()
+                                selectedGame = "TicTacToe"
+                            },
+                        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
                     ) {
-                        Text(text = if (effectiveSelected == "connect") "Connect Control Agent (selected)" else "Connect Control Agent")
-                    }
-
-                    Button(
-                        onClick = {
-                            prefs?.setAgentSelectedAction("disconnect")
-                            selectedAgentAction = "disconnect"
-                            val intent = android.content.Intent(context, ControlAgentService::class.java)
-                                .setAction(ControlAgentService.ACTION_DISCONNECT)
-                            context.startService(intent)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(text = if (effectiveSelected == "disconnect") "Disconnect Control Agent (selected)" else "Disconnect Control Agent")
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(text = "TicTacToe")
+                            Text(text = "Tap to play")
+                        }
                     }
                 }
             }
+        }
 
+        if (selectedGame.isNotBlank()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (selectedGame == "TicTacToe") {
+                        fun winnerOf(b: List<String>): String? {
+                            val lines = listOf(
+                                listOf(0, 1, 2),
+                                listOf(3, 4, 5),
+                                listOf(6, 7, 8),
+                                listOf(0, 3, 6),
+                                listOf(1, 4, 7),
+                                listOf(2, 5, 8),
+                                listOf(0, 4, 8),
+                                listOf(2, 4, 6)
+                            )
+                            for (ln in lines) {
+                                val a = b[ln[0]]
+                                val c = b[ln[1]]
+                                val d = b[ln[2]]
+                                if (a.isNotBlank() && a == c && c == d) return a
+                            }
+                            return null
+                        }
+
+                        var board by rememberSaveable { mutableStateOf(List(9) { "" }) }
+                        var next by rememberSaveable { mutableStateOf("X") }
+
+                        val win = remember(board) { winnerOf(board) }
+                        val draw = remember(board, win) { win == null && board.all { it.isNotBlank() } }
+
+                        Text(text = "TicTacToe")
+                        Text(
+                            text = when {
+                                win != null -> "Winner: ${win}"
+                                draw -> "Draw"
+                                else -> "Turn: ${next}"
+                            }
+                        )
+
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            for (r in 0..2) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    for (c in 0..2) {
+                                        val idx = r * 3 + c
+                                        val cell = board[idx]
+                                        Button(
+                                            onClick = {
+                                                if (win != null || draw) return@Button
+                                                if (board[idx].isNotBlank()) return@Button
+                                                val nb = board.toMutableList()
+                                                nb[idx] = next
+                                                board = nb.toList()
+                                                next = if (next == "X") "O" else "X"
+                                            },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                        ) {
+                                            Text(text = if (cell.isBlank()) " " else cell)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                board = List(9) { "" }
+                                next = "X"
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(text = "Reset")
+                        }
+                    } else {
+                        Text(text = "${selectedGame} (MVP)")
+                        Text(text = "Game UI will be added next. Control Agent connect is triggered on game tap.")
+                    }
+
+                    Button(
+                        onClick = { selectedGame = "" },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(text = "Back")
+                    }
+                }
+            }
+        }
+
+        if (showAdvanced) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -404,60 +685,52 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    Text(text = "Advanced")
+
+                    OutlinedTextField(
+                        value = deviceId,
+                        onValueChange = { },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        readOnly = true,
+                        label = { Text("Device ID") },
+                    )
+
                     Button(
                         onClick = {
-                            showAdvanced = !showAdvanced
+                            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("deviceId", deviceId))
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(text = if (showAdvanced) "Hide Advanced" else "Show Advanced")
+                        Text(text = "Copy Device ID")
                     }
 
-                    if (showAdvanced) {
-                        OutlinedTextField(
-                            value = deviceId,
-                            onValueChange = { },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            readOnly = true,
-                            label = { Text("Device ID") },
-                        )
+                    OutlinedTextField(
+                        value = backendHost,
+                        onValueChange = { backendHost = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Backend Host") },
+                    )
 
-                        Button(
-                            onClick = {
-                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                clipboard.setPrimaryClip(ClipData.newPlainText("deviceId", deviceId))
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(text = "Copy Device ID")
-                        }
+                    OutlinedTextField(
+                        value = enrollToken,
+                        onValueChange = { enrollToken = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Enroll Token") },
+                    )
 
-                        OutlinedTextField(
-                            value = backendHost,
-                            onValueChange = { backendHost = it },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Backend Host") },
-                        )
-
-                        OutlinedTextField(
-                            value = enrollToken,
-                            onValueChange = { enrollToken = it },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Enroll Token") },
-                        )
-
-                        Button(
-                            onClick = {
-                                prefs?.setBackendHost(backendHost)
-                                prefs?.setBackendEnrollToken(enrollToken)
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(text = "Save Backend Settings")
-                        }
+                    Button(
+                        onClick = {
+                            prefs?.setBackendHost(backendHost)
+                            prefs?.setBackendEnrollToken(enrollToken)
+                            showAdvanced = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(text = "Save")
                     }
                 }
             }

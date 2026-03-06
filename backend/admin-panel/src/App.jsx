@@ -218,16 +218,18 @@ export default function App() {
           <thead>
             <tr>
               <th>Device</th>
+              <th>IP</th>
               <th>Online</th>
               <th>Last Seen</th>
               <th>SOCKS</th>
+              <th>Creds</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {sortedDevices.length === 0 ? (
               <tr>
-                <td colSpan="5" className="muted">No devices connected.</td>
+                <td colSpan="7" className="muted">No devices connected.</td>
               </tr>
             ) : null}
 
@@ -242,11 +244,19 @@ export default function App() {
                   <td>
                     <div className="mono">{d.deviceId}</div>
                   </td>
+                  <td>
+                    <div className="mono">{d.publicIp || d.lanIp || '-'}</div>
+                  </td>
                   <td>{d.online ? 'yes' : 'no'}</td>
                   <td>{formatTs(d.lastSeenAt)}</td>
                   <td>
                     <div className={socksRunning ? 'pill ok' : 'pill off'}>
                       {socksRunning ? `running:${status.socksPort || 1080}` : 'stopped'}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="mono">
+                      {d.proxyUsername && d.proxyPassword ? `${d.proxyUsername}:${d.proxyPassword}` : '-'}
                     </div>
                   </td>
                   <td>

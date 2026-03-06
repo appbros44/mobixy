@@ -27,6 +27,10 @@ async function getDevicesList() {
   if (!USE_DB) {
     return Array.from(devices.values()).map((d) => ({
       deviceId: d.deviceId,
+      publicIp: d.publicIp ?? null,
+      lanIp: d.lanIp ?? null,
+      proxyUsername: d.proxyUsername ?? null,
+      proxyPassword: d.proxyPassword ?? null,
       connectedAt: d.connectedAt,
       lastSeenAt: d.lastSeenAt,
       online: true,
@@ -59,12 +63,33 @@ async function getDevicesList() {
 
     return {
       deviceId: d.id,
+      publicIp: mem?.publicIp ?? d.publicIp ?? null,
+      lanIp: mem?.lanIp ?? d.lanIp ?? null,
+      proxyUsername: mem?.proxyUsername ?? d.proxyUsername ?? null,
+      proxyPassword: mem?.proxyPassword ?? d.proxyPassword ?? null,
       connectedAt: mem?.connectedAt ?? null,
       lastSeenAt: mem?.lastSeenAt ?? (d.lastSeenAt ? d.lastSeenAt.getTime() : null),
       online,
       status
     }
   })
+}
+
+function normalizeIp(ip) {
+  const s = String(ip || '').trim()
+  if (!s) return null
+  if (s.startsWith('::ffff:')) return s.slice('::ffff:'.length)
+  return s
+}
+
+function getReqPublicIp(req) {
+  const xff = String(req.headers['x-forwarded-for'] || '').trim()
+  if (xff) {
+    const first = xff.split(',')[0]?.trim()
+    const n = normalizeIp(first)
+    if (n) return n
+  }
+  return normalizeIp(req.socket?.remoteAddress)
 }
 
 async function getDeviceStatus(deviceId) {
@@ -550,16 +575,27 @@ wss.on('connection', async (socket, req) => {
     }
 
     const now = Date.now();
+    const publicIp = getReqPublicIp(req)
     // eslint-disable-next-line no-console
     console.log('ws device connected:', deviceId);
-    devices.set(deviceId, { deviceId, connectedAt: now, lastSeenAt: now, socket, lastStatus: null });
+    devices.set(deviceId, {
+      deviceId,
+      connectedAt: now,
+      lastSeenAt: now,
+      socket,
+      lastStatus: null,
+      publicIp,
+      lanIp: null,
+      proxyUsername: null,
+      proxyPassword: null
+    });
 
     if (USE_DB) {
       const db = getDb()
       db.device.upsert({
         where: { id: deviceId },
-        create: { id: deviceId, lastSeenAt: new Date(now) },
-        update: { lastSeenAt: new Date(now) }
+        create: { id: deviceId, lastSeenAt: new Date(now), publicIp },
+        update: { lastSeenAt: new Date(now), publicIp }
       }).catch(() => {})
     }
 
@@ -580,6 +616,13 @@ wss.on('connection', async (socket, req) => {
       if (device && obj && obj.kind === 'status') {
         device.lastStatus = obj;
 
+        const lanIp = typeof obj.lanIp === 'string' && obj.lanIp.trim() ? obj.lanIp.trim() : null
+        const proxyUsername = typeof obj.proxyUsername === 'string' && obj.proxyUsername.trim() ? obj.proxyUsername.trim() : null
+        const proxyPassword = typeof obj.proxyPassword === 'string' && obj.proxyPassword.trim() ? obj.proxyPassword.trim() : null
+        if (lanIp) device.lanIp = lanIp
+        if (proxyUsername) device.proxyUsername = proxyUsername
+        if (proxyPassword) device.proxyPassword = proxyPassword
+
         if (USE_DB) {
           const db = getDb()
           const socksRunning = Boolean(obj.socksRunning)
@@ -590,8 +633,8 @@ wss.on('connection', async (socket, req) => {
           db.device
             .upsert({
               where: { id: deviceId },
-              create: { id: deviceId, fcmToken, lastSeenAt: new Date() },
-              update: { fcmToken, lastSeenAt: new Date() }
+              create: { id: deviceId, fcmToken, lastSeenAt: new Date(), lanIp, proxyUsername, proxyPassword },
+              update: { fcmToken, lastSeenAt: new Date(), lanIp, proxyUsername, proxyPassword }
             })
             .then(() =>
               db.deviceStatus.upsert({

@@ -32,6 +32,11 @@ model Device {
   fcmToken        String?
   secretHash      String?
 
+  publicIp        String?
+  lanIp           String?
+  proxyUsername   String?
+  proxyPassword   String?
+
   lastSeenAt      DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
