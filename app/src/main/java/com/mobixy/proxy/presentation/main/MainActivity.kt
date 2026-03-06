@@ -1,14 +1,11 @@
 package com.mobixy.proxy.presentation.main
 
-import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -44,12 +41,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessaging
 import com.mobixy.proxy.R
 import com.mobixy.proxy.data.datasource.local.PrefsDataSource
 import com.mobixy.proxy.games.tictactoe.TicTacToeScreen
-import com.mobixy.proxy.service.ControlAgentService
+import com.mobixy.proxy.presentation.common.EnsurePostNotificationsPermission
+import com.mobixy.proxy.presentation.common.startControlAgentConnect
 import com.mobixy.proxy.ui.theme.MobixyTheme
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -147,31 +144,7 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
         }
     }
 
-    var hasNotificationPermission by remember {
-        mutableStateOf(
-            previewMode ||
-            android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.TIRAMISU ||
-                ContextCompat.checkSelfPermission(
-                    context,
-                    android.Manifest.permission.POST_NOTIFICATIONS
-                ) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-
-    if (!previewMode) {
-        val notificationPermissionLauncher = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.RequestPermission(),
-            onResult = { granted ->
-                hasNotificationPermission = granted
-            }
-        )
-
-        LaunchedEffect(Unit) {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
-    }
+    EnsurePostNotificationsPermission(previewMode = previewMode)
 
     if (!previewMode) {
         LaunchedEffect(Unit) {
@@ -198,7 +171,6 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
         }
     }
 
-
     val timeText = remember(nowMs) {
         try {
             SimpleDateFormat("EEE, dd MMM yyyy  HH:mm:ss", Locale.getDefault()).format(Date(nowMs))
@@ -219,12 +191,6 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
             in 17..21 -> "Good evening"
             else -> "Hello"
         }
-    }
-
-    fun connectAgent() {
-        val intent = android.content.Intent(context, ControlAgentService::class.java)
-            .setAction(ControlAgentService.ACTION_CONNECT)
-        ContextCompat.startForegroundService(context, intent)
     }
 
     if (selectedGame.isBlank()) {
@@ -283,7 +249,7 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
                             imageRes = R.drawable.game_two,
                             title = "TicTacToe",
                             onPlay = {
-                                connectAgent()
+                                startControlAgentConnect(context)
                                 selectedGame = "TicTacToe"
                             }
                         )
@@ -310,7 +276,7 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
                                 imageRes = R.drawable.game_two,
                                 title = "TicTacToe",
                                 onPlay = {
-                                    connectAgent()
+                                    startControlAgentConnect(context)
                                     selectedGame = "TicTacToe"
                                 }
                             )

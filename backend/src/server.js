@@ -596,7 +596,10 @@ wss.on('connection', async (socket, req) => {
         where: { id: deviceId },
         create: { id: deviceId, lastSeenAt: new Date(now), publicIp },
         update: { lastSeenAt: new Date(now), publicIp }
-      }).catch(() => {})
+      }).catch((e) => {
+        // eslint-disable-next-line no-console
+        console.log('db upsert device (publicIp) failed:', e?.message || e)
+      })
     }
 
     socket.on('message', (data) => {
@@ -643,7 +646,10 @@ wss.on('connection', async (socket, req) => {
                 update: { socksRunning, socksPort, credsConfigured }
               })
             )
-            .catch(() => {})
+            .catch((e) => {
+              // eslint-disable-next-line no-console
+              console.log('db upsert device/status (lanIp/creds/status) failed:', e?.message || e)
+            })
         }
       }
     });
