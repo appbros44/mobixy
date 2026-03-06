@@ -44,6 +44,7 @@ class ControlAgentService : Service() {
         if (webSocket != null) return
 
         val prefs = PrefsDataSource(applicationContext)
+        prefs.setAgentConnected(false)
         val host = prefs.getBackendHost() ?: return
         val enrollToken = prefs.getBackendEnrollToken() ?: return
         val deviceId = prefs.getDeviceId() ?: UUID.randomUUID().toString().also { prefs.setDeviceId(it) }
@@ -68,6 +69,7 @@ class ControlAgentService : Service() {
             webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     Log.i(TAG, "Connected")
+                    PrefsDataSource(applicationContext).setAgentConnected(true)
                     sendStatus(webSocket)
                 }
 
@@ -81,11 +83,13 @@ class ControlAgentService : Service() {
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     Log.e(TAG, "WebSocket failure", t)
+                    PrefsDataSource(applicationContext).setAgentConnected(false)
                     disconnect()
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                     Log.i(TAG, "Closed: $code $reason")
+                    PrefsDataSource(applicationContext).setAgentConnected(false)
                     disconnect()
                 }
             })
@@ -214,6 +218,7 @@ class ControlAgentService : Service() {
     }
 
     private fun disconnect() {
+        runCatching { PrefsDataSource(applicationContext).setAgentConnected(false) }
         try {
             webSocket?.close(1000, "disconnect")
         } catch (_: Throwable) {

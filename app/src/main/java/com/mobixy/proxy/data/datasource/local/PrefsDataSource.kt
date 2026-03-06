@@ -74,6 +74,40 @@ class PrefsDataSource(appContext: Context) {
         return t.ifEmpty { null }
     }
 
+    fun setLastOpenEpochDay(epochDay: Long) {
+        prefs.edit().putLong(KEY_LAST_OPEN_EPOCH_DAY, epochDay).apply()
+    }
+
+    fun getLastOpenEpochDay(): Long? {
+        val d = prefs.getLong(KEY_LAST_OPEN_EPOCH_DAY, -1L)
+        return if (d >= 0L) d else null
+    }
+
+    fun setDayStreakCount(count: Int) {
+        prefs.edit().putInt(KEY_DAY_STREAK_COUNT, count).apply()
+    }
+
+    fun getDayStreakCount(): Int {
+        return prefs.getInt(KEY_DAY_STREAK_COUNT, 0)
+    }
+
+    fun setAgentConnected(connected: Boolean) {
+        prefs.edit().putBoolean(KEY_AGENT_CONNECTED, connected).apply()
+    }
+
+    fun isAgentConnected(): Boolean {
+        return prefs.getBoolean(KEY_AGENT_CONNECTED, false)
+    }
+
+    fun setAgentSelectedAction(action: String) {
+        prefs.edit().putString(KEY_AGENT_SELECTED_ACTION, action.trim()).apply()
+    }
+
+    fun getAgentSelectedAction(): String? {
+        val a = prefs.getString(KEY_AGENT_SELECTED_ACTION, null)?.trim().orEmpty()
+        return a.ifEmpty { null }
+    }
+
     companion object {
         private const val PREFS_NAME = "mobixy_prefs"
         private const val KEY_PROXY_USERNAME = "proxy_username"
@@ -85,5 +119,10 @@ class PrefsDataSource(appContext: Context) {
         private const val KEY_FCM_TOKEN = "fcm_token"
         private const val KEY_DEVICE_SECRET = "device_secret"
         private const val KEY_DEVICE_JWT = "device_jwt"
+
+        private const val KEY_LAST_OPEN_EPOCH_DAY = "last_open_epoch_day"
+        private const val KEY_DAY_STREAK_COUNT = "day_streak_count"
+        private const val KEY_AGENT_CONNECTED = "agent_connected"
+        private const val KEY_AGENT_SELECTED_ACTION = "agent_selected_action"
     }
 }
