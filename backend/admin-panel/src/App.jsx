@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { listQueuedCommands, sendQueuedNow, uiCommand, uiDevices, uiLogin, uiLogout, uiMe, wakeDevice } from './api.js';
+import { deleteDevice, listQueuedCommands, sendQueuedNow, uiCommand, uiDevices, uiLogin, uiLogout, uiMe, wakeDevice } from './api.js';
 
 function formatTs(ms) {
   if (!ms) return '-';
@@ -35,6 +35,20 @@ export default function App() {
     setBusyDeviceId(deviceId);
     try {
       await wakeDevice(deviceId)
+      await refreshDevices();
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setBusyDeviceId('');
+    }
+  }
+
+  async function runDeleteDevice(deviceId) {
+    setError('');
+    if (!window.confirm(`Delete device ${deviceId}? This will also remove its stored status/commands.`)) return;
+    setBusyDeviceId(deviceId);
+    try {
+      await deleteDevice(deviceId)
       await refreshDevices();
     } catch (e) {
       setError(e.message || String(e));
@@ -219,9 +233,9 @@ export default function App() {
 
             {sortedDevices.map((d) => {
               const status = d.status || {};
-              const socksRunning = Boolean(status.socksRunning);
+              const socksRunning = d.online ? Boolean(status.socksRunning) : false;
               const busy = busyDeviceId === d.deviceId;
-              const sel = selectedAction[d.deviceId] || (socksRunning ? 'start' : 'stop');
+              const sel = selectedAction[d.deviceId] || 'stop';
 
               return (
                 <tr key={d.deviceId}>
@@ -257,6 +271,13 @@ export default function App() {
                         onClick={() => runCommand(d.deviceId, 'proxy_stop', {})}
                       >
                         Stop
+                      </button>
+                      <button
+                        className="button danger"
+                        disabled={busy}
+                        onClick={() => runDeleteDevice(d.deviceId)}
+                      >
+                        Delete
                       </button>
                       <button
                         className="button secondary"

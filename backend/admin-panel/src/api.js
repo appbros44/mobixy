@@ -94,3 +94,10 @@ export async function sendQueuedNow(deviceId) {
     body: JSON.stringify({})
   })
 }
+
+export async function deleteDevice(deviceId) {
+  return request(`/admin/devices/${encodeURIComponent(deviceId)}`, {
+    method: 'DELETE',
+    headers: {}
+  })
+}

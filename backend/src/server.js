@@ -183,15 +183,44 @@ async function wakeDeviceWithTokenOverride(deviceId, fcmToken) {
   return { ok: true, messageId: r.id }
 }
 
+function isAllowedUiOrigin(origin) {
+  if (!origin) return false
+
+  const o = String(origin).trim()
+  if (!o) return false
+  if (o === UI_ORIGIN) return true
+
+  try {
+    const ui = new URL(UI_ORIGIN)
+    const req = new URL(o)
+    if (ui.protocol !== req.protocol) return false
+    if (ui.port !== req.port) return false
+
+    const uiHost = ui.hostname
+    const reqHost = req.hostname
+    const hostOk =
+      uiHost === reqHost ||
+      (uiHost === 'localhost' && reqHost === '127.0.0.1') ||
+      (uiHost === '127.0.0.1' && reqHost === 'localhost')
+
+    return hostOk
+  } catch {
+    return false
+  }
+}
+
 app.use((req, res, next) => {
   const p = req.path || ''
   if (p.startsWith('/auth/') || p.startsWith('/admin/')) {
-    res.setHeader('Access-Control-Allow-Origin', UI_ORIGIN);
-    res.setHeader('Vary', 'Origin')
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    if (req.method === 'OPTIONS') return res.status(204).end();
+    const origin = String(req.headers.origin || '').trim()
+    if (origin && isAllowedUiOrigin(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin')
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,PUT,PATCH,OPTIONS');
+      if (req.method === 'OPTIONS') return res.status(204).end();
+    }
   }
   next();
 });
@@ -421,6 +450,33 @@ app.get('/admin/devices/:deviceId/status', (req, res) => {
     .catch(() => res.status(500).json({ error: 'server_error' }))
 });
 
+app.delete('/admin/devices/:deviceId', (req, res) => {
+  if (!isAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  if (!USE_DB) return res.status(400).json({ error: 'db_disabled' })
+
+  const deviceId = String(req.params.deviceId).trim()
+  if (!deviceId) return res.status(400).json({ error: 'missing_device_id' })
+
+  const mem = devices.get(deviceId)
+  if (mem?.socket) {
+    try {
+      mem.socket.close(1000, 'deleted')
+    } catch {
+    }
+  }
+  devices.delete(deviceId)
+
+  const db = getDb()
+  db.device
+    .delete({ where: { id: deviceId } })
+    .then(() => res.json({ ok: true, deviceId }))
+    .catch((e) => {
+      // Prisma throws if record missing
+      if (String(e?.code || '') === 'P2025') return res.status(404).json({ error: 'device_not_found' })
+      res.status(500).json({ error: 'server_error' })
+    })
+})
+
 app.post('/admin/devices/:deviceId/command', (req, res) => {
   if (!isAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
 
@@ -464,7 +520,7 @@ const server = http.createServer(app);
 
 const wss = new WebSocketServer({ server, path: '/ws/device' });
 
-wss.on('connection', (socket, req) => {
+wss.on('connection', async (socket, req) => {
   // eslint-disable-next-line no-console
   console.log('ws connection attempt:', req.url);
   try {
@@ -480,6 +536,17 @@ wss.on('connection', (socket, req) => {
       console.log('ws unauthorized:', { deviceId, tokenPresent: Boolean(token), jwtPresent: Boolean(deviceJwt) });
       socket.close(1008, 'unauthorized');
       return;
+    }
+
+    if (USE_DB && jwtOk) {
+      const db = getDb()
+      const d = await db.device.findUnique({ where: { id: deviceId }, select: { id: true } })
+      if (!d) {
+        // eslint-disable-next-line no-console
+        console.log('ws rejected: device deleted:', deviceId)
+        socket.close(1008, 'unauthorized');
+        return
+      }
     }
 
     const now = Date.now();
