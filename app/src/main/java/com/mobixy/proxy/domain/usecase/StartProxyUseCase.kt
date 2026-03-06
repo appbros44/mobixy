@@ -1,4 +1,3 @@
 package com.mobixy.proxy.domain.usecase
 
-class StartProxyUseCase {
-}
+class StartProxyUseCase

@@ -1,4 +1,3 @@
 package com.mobixy.proxy.proxy
 
-class RelayHandler {
-}
+class RelayHandler

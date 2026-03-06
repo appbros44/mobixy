@@ -1,4 +1,3 @@
 package com.mobixy.proxy.data.repository
 
-class AuthRepositoryImpl {
-}
+class AuthRepositoryImpl

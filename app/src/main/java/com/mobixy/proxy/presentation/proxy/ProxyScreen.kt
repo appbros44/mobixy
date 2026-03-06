@@ -1,4 +1,3 @@
 package com.mobixy.proxy.presentation.proxy
 
-class ProxyScreen {
-}
+class ProxyScreen
