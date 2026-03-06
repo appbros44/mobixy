@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -146,14 +147,20 @@ private fun GameCard(
                     .fillMaxSize()
                     .padding(18.dp)
             ) {
-                Button(
-                    onClick = onPlay,
+                Text(
+                    text = "Play Now",
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                ) {
-                    Text(text = "PLAY NOW")
-                }
+                        .background(
+                            color = Color(0x66000000),
+                            shape = CardDefaults.shape
+                        )
+                        .padding(horizontal = 18.dp, vertical = 10.dp)
+                        .fillMaxWidth(),
+                    color = Color(0xFFFFF4D6),
+                    fontWeight = FontWeight.ExtraBold,
+                    textAlign = TextAlign.Center
+                )
             }
         }
     }
