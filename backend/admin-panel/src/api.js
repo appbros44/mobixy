@@ -1,4 +1,17 @@
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8787';
+function getDefaultApiBase() {
+  try {
+    if (typeof window === 'undefined') return 'http://localhost:8787'
+    const { protocol, hostname } = window.location
+    if (hostname.startsWith('admin.')) {
+      return `${protocol}//api.${hostname.slice('admin.'.length)}`
+    }
+    return `${protocol}//${hostname}`
+  } catch {
+    return 'http://localhost:8787'
+  }
+}
+
+const API_BASE = import.meta.env.VITE_API_BASE || getDefaultApiBase();
 
 const TOKEN_KEY = 'mobixy_admin_jwt'
 

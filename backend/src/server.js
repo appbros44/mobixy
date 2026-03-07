@@ -83,12 +83,19 @@ function normalizeIp(ip) {
 }
 
 function getReqPublicIp(req) {
-  const xff = String(req.headers['x-forwarded-for'] || '').trim()
+  const cf = normalizeIp(req.headers?.['cf-connecting-ip'])
+  if (cf) return cf
+
+  const xri = normalizeIp(req.headers?.['x-real-ip'])
+  if (xri) return xri
+
+  const xff = String(req.headers?.['x-forwarded-for'] || '').trim()
   if (xff) {
     const first = xff.split(',')[0]?.trim()
     const n = normalizeIp(first)
     if (n) return n
   }
+
   return normalizeIp(req.socket?.remoteAddress)
 }
 
