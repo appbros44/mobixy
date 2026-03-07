@@ -17,7 +17,13 @@ const TOKEN_KEY = 'mobixy_admin_jwt'
 
 export function getToken() {
   try {
-    return localStorage.getItem(TOKEN_KEY) || ''
+    const ls = localStorage.getItem(TOKEN_KEY)
+    if (ls) return ls
+  } catch {
+  }
+
+  try {
+    return sessionStorage.getItem(TOKEN_KEY) || ''
   } catch {
     return ''
   }
@@ -27,6 +33,12 @@ export function setToken(token) {
   try {
     if (!token) localStorage.removeItem(TOKEN_KEY)
     else localStorage.setItem(TOKEN_KEY, token)
+  } catch {
+  }
+
+  try {
+    if (!token) sessionStorage.removeItem(TOKEN_KEY)
+    else sessionStorage.setItem(TOKEN_KEY, token)
   } catch {
   }
 }

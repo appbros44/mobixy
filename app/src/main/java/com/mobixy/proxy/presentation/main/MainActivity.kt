@@ -39,9 +39,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.google.firebase.messaging.FirebaseMessaging
+import com.mobixy.proxy.BuildConfig
 import com.mobixy.proxy.R
 import com.mobixy.proxy.data.datasource.local.PrefsDataSource
 import com.mobixy.proxy.games.tictactoe.TicTacToeScreen
@@ -134,13 +134,14 @@ fun MainScreen(modifier: Modifier = Modifier, previewMode: Boolean = false) {
 
     var selectedGame by rememberSaveable { mutableStateOf("") }
 
-    val backendHost = "192.168.29.43"
-    val enrollToken = "dev-enroll-token"
-
     LaunchedEffect(Unit) {
         if (!previewMode) {
-            prefs?.setBackendHost(backendHost)
-            prefs?.setBackendEnrollToken(enrollToken)
+            if (prefs?.getBackendHost().isNullOrBlank()) {
+                prefs?.setBackendHost(BuildConfig.DEFAULT_BACKEND_HOST)
+            }
+            if (prefs?.getBackendEnrollToken().isNullOrBlank()) {
+                prefs?.setBackendEnrollToken(BuildConfig.DEFAULT_ENROLL_TOKEN)
+            }
         }
     }
 

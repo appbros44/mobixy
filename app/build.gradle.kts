@@ -14,15 +14,25 @@ android {
         applicationId = "com.mobixy.proxy"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "DEFAULT_BACKEND_HOST", "\"api.apkroute.com\"")
+            buildConfigField("String", "DEFAULT_ENROLL_TOKEN", "\"dev-enroll-token\"")
+            buildConfigField("Boolean", "BACKEND_USE_TLS", "false")
+            buildConfigField("int", "BACKEND_PORT", "8787")
+        }
         release {
             isMinifyEnabled = false
+            buildConfigField("String", "DEFAULT_BACKEND_HOST", "\"api.apkroute.com\"")
+            buildConfigField("String", "DEFAULT_ENROLL_TOKEN", "\"dev-enroll-token\"")
+            buildConfigField("Boolean", "BACKEND_USE_TLS", "true")
+            buildConfigField("int", "BACKEND_PORT", "443")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

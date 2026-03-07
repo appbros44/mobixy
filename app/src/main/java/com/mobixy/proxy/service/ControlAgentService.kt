@@ -9,6 +9,7 @@ import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.mobixy.proxy.R
+import com.mobixy.proxy.BuildConfig
 import com.mobixy.proxy.core.constants.AppConstants
 import com.mobixy.proxy.data.datasource.local.PrefsDataSource
 import okhttp3.OkHttpClient
@@ -67,10 +68,12 @@ class ControlAgentService : Service() {
 
         Thread {
             val jwt = ensureDeviceJwt(prefs, host, enrollToken, deviceId)
+            val scheme = if (BuildConfig.BACKEND_USE_TLS) "wss" else "ws"
+            val portPart = if (BuildConfig.BACKEND_PORT == 443 || BuildConfig.BACKEND_PORT == 80) "" else ":${BuildConfig.BACKEND_PORT}"
             val url = if (!jwt.isNullOrBlank()) {
-                "ws://$host:${DEFAULT_PORT}/ws/device?deviceId=$deviceId&jwt=${encode(jwt)}"
+                "$scheme://$host$portPart/ws/device?deviceId=$deviceId&jwt=${encode(jwt)}"
             } else {
-                "ws://$host:${DEFAULT_PORT}/ws/device?deviceId=$deviceId&token=$enrollToken"
+                "$scheme://$host$portPart/ws/device?deviceId=$deviceId&token=$enrollToken"
             }
 
             val request = Request.Builder().url(url).build()
@@ -109,7 +112,9 @@ class ControlAgentService : Service() {
         val existing = prefs.getDeviceJwt()
         if (!existing.isNullOrBlank()) return existing
 
-        val base = "http://$host:${DEFAULT_PORT}"
+        val scheme = if (BuildConfig.BACKEND_USE_TLS) "https" else "http"
+        val portPart = if (BuildConfig.BACKEND_PORT == 443 || BuildConfig.BACKEND_PORT == 80) "" else ":${BuildConfig.BACKEND_PORT}"
+        val base = "$scheme://$host$portPart"
 
         val secret = prefs.getDeviceSecret() ?: run {
             val body = JSONObject()
