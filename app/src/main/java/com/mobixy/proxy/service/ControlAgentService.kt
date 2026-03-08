@@ -12,23 +12,32 @@ import com.mobixy.proxy.R
 import com.mobixy.proxy.BuildConfig
 import com.mobixy.proxy.core.constants.AppConstants
 import com.mobixy.proxy.data.datasource.local.PrefsDataSource
+import com.mobixy.proxy.tunnel.StreamMultiplexer
 import okhttp3.OkHttpClient
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import okio.ByteString
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.IOException
+import java.net.ConnectException
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.security.SecureRandom
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 
 class ControlAgentService : Service() {
 
     private val okHttpClient = OkHttpClient()
+    private val tunnelStreams = ConcurrentHashMap<String, StreamMultiplexer.TunnelStream>()
 
     @Volatile
     private var webSocket: WebSocket? = null
@@ -87,6 +96,10 @@ class ControlAgentService : Service() {
 
                 override fun onMessage(webSocket: WebSocket, text: String) {
                     handleMessage(webSocket, text)
+                }
+
+                override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                    handleBinaryMessage(webSocket, bytes.toByteArray())
                 }
 
                 override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
@@ -165,6 +178,19 @@ class ControlAgentService : Service() {
 
     private fun handleMessage(ws: WebSocket, text: String) {
         val obj = runCatching { JSONObject(text) }.getOrNull() ?: return
+        
+        // Handle tunnel messages
+        when (obj.optString("t")) {
+            "open" -> {
+                handleTunnelOpen(ws, obj)
+                return
+            }
+            "close" -> {
+                handleTunnelClose(ws, obj)
+                return
+            }
+        }
+        
         when (obj.optString("kind")) {
             "command" -> {
                 val type = obj.optString("type")
@@ -262,6 +288,13 @@ class ControlAgentService : Service() {
 
     private fun disconnect() {
         runCatching { PrefsDataSource(applicationContext).setAgentConnected(false) }
+        
+        // Close all tunnel streams
+        tunnelStreams.values.forEach { stream ->
+            runCatching { stream.close() }
+        }
+        tunnelStreams.clear()
+        
         try {
             webSocket?.close(1000, "disconnect")
         } catch (_: Throwable) {
@@ -269,6 +302,100 @@ class ControlAgentService : Service() {
         webSocket = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    private fun handleTunnelOpen(ws: WebSocket, msg: JSONObject) {
+        val sid = msg.optString("sid")
+        val host = msg.optString("host")
+        val port = msg.optInt("port")
+        val timeoutMs = msg.optInt("timeoutMs", 10000)
+
+        if (sid.isEmpty() || host.isEmpty()) {
+            sendOpenFail(ws, sid, "Invalid parameters")
+            return
+        }
+
+        Thread {
+            try {
+                val stream = StreamMultiplexer.TunnelStream(sid, host, port)
+                stream.connect(timeoutMs)
+                tunnelStreams[sid] = stream
+                
+                sendOpenOk(ws, sid)
+                
+                // Start forwarding data
+                val inputStream = stream.getInputStream()
+                val buffer = ByteArray(8192)
+                while (true) {
+                    val bytesRead = inputStream.read(buffer)
+                    if (bytesRead == -1) break
+                    
+                    // Send data to backend
+                    val frame = ByteArray(5 + bytesRead)
+                    // Write stream ID (4 bytes big-endian)
+                    val sidInt = sid.toIntOrNull() ?: 0
+                    frame[0] = (sidInt shr 24).toByte()
+                    frame[1] = (sidInt shr 16).toByte()
+                    frame[2] = (sidInt shr 8).toByte()
+                    frame[3] = sidInt.toByte()
+                    frame[4] = 0 // flags
+                    System.arraycopy(buffer, 0, frame, 5, bytesRead)
+                    
+                    ws.send(ByteString.of(*frame))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Tunnel stream failed for $sid", e)
+                tunnelStreams.remove(sid)
+                sendOpenFail(ws, sid, e.message ?: "Connection failed")
+            }
+        }.start()
+    }
+
+    private fun handleTunnelClose(ws: WebSocket, msg: JSONObject) {
+        val sid = msg.optString("sid")
+        val stream = tunnelStreams.remove(sid)
+        if (stream != null) {
+            runCatching { stream.close() }
+        }
+    }
+
+    private fun sendOpenOk(ws: WebSocket, sid: String) {
+        val msg = JSONObject()
+        msg.put("t", "open_ok")
+        msg.put("sid", sid)
+        ws.send(msg.toString())
+    }
+
+    private fun sendOpenFail(ws: WebSocket, sid: String, error: String) {
+        val msg = JSONObject()
+        msg.put("t", "open_fail")
+        msg.put("sid", sid)
+        msg.put("error", error)
+        ws.send(msg.toString())
+    }
+
+    private fun handleBinaryMessage(ws: WebSocket, data: ByteArray) {
+        try {
+            // Parse tunnel frame: [4 bytes sid][1 byte flags][payload]
+            if (data.size < 5) return
+
+            // Extract stream ID (big-endian)
+            val sid = ((data[0].toInt() and 0xFF) shl 24) or
+                     ((data[1].toInt() and 0xFF) shl 16) or
+                     ((data[2].toInt() and 0xFF) shl 8) or
+                     (data[3].toInt() and 0xFF)
+            
+            val flags = data[4]
+            val payload = data.sliceArray(5 until data.size)
+
+            val sidStr = sid.toString()
+            val stream = tunnelStreams[sidStr]
+            if (stream != null) {
+                stream.write(payload)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling binary message", e)
+        }
     }
 
     override fun onDestroy() {

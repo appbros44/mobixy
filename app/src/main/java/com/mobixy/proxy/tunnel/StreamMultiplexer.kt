@@ -20,6 +20,45 @@ internal class StreamMultiplexer(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val dialer = CellularDialer(appContext)
 
+    class TunnelStream(
+        private val sid: String,
+        private val host: String,
+        private val port: Int
+    ) : Closeable {
+        private var socket: Socket? = null
+        private var inputStream: InputStream? = null
+        private var outputStream: OutputStream? = null
+
+        fun connect(timeoutMs: Int) {
+            val sock = Socket()
+            sock.connect(java.net.InetSocketAddress(host, port), timeoutMs)
+            socket = sock
+            inputStream = sock.getInputStream()
+            outputStream = sock.getOutputStream()
+        }
+
+        fun getInputStream(): InputStream {
+            return inputStream ?: throw IllegalStateException("Not connected")
+        }
+
+        fun write(data: ByteArray) {
+            outputStream?.write(data)
+            outputStream?.flush()
+        }
+
+        override fun close() {
+            try {
+                inputStream?.close()
+            } catch (_: Exception) {}
+            try {
+                outputStream?.close()
+            } catch (_: Exception) {}
+            try {
+                socket?.close()
+            } catch (_: Exception) {}
+        }
+    }
+
     private data class StreamState(
         val socket: Socket,
         val input: InputStream,

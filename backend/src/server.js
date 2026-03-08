@@ -550,6 +550,209 @@ app.post('/admin/devices/:deviceId/command', (req, res) => {
 
 const server = http.createServer(app);
 
+// HTTP CONNECT proxy listener for Phase 2
+const proxyConnections = new Map() // streamId -> { socket, deviceId, targetHost, targetPort }
+
+server.on('connect', (req, clientSocket, head) => {
+  // Check API key authentication
+  const apiKey = req.headers['x-proxy-key']
+  if (!apiKey) {
+    clientSocket.end('HTTP/1.1 401 Unauthorized\r\n\r\n')
+    return
+  }
+
+  // TODO: Validate API key against database (for now, accept any non-empty key)
+  if (apiKey.length < 10) {
+    clientSocket.end('HTTP/1.1 401 Invalid API key\r\n\r\n')
+    return
+  }
+
+  // Parse target from URL (e.g., "example.com:443")
+  const { hostname: targetHost, port: targetPort } = new URL(`http://${req.url}`)
+  
+  // Get online devices for round-robin selection
+  const onlineDevices = Array.from(devices.entries()).filter(([_, device]) => {
+    const lastSeen = device.lastSeenAt || 0
+    return Date.now() - lastSeen < 60000 // Consider online if seen within last minute
+  })
+
+  if (onlineDevices.length === 0) {
+    clientSocket.end('HTTP/1.1 502 No devices available\r\n\r\n')
+    return
+  }
+
+  // Round-robin device selection
+  const deviceIndex = Math.floor(Math.random() * onlineDevices.length)
+  const [deviceId, device] = onlineDevices[deviceIndex]
+
+  // Generate unique stream ID
+  const streamId = crypto.randomBytes(16).toString('hex')
+
+  // Store connection info
+  proxyConnections.set(streamId, {
+    socket: clientSocket,
+    deviceId,
+    targetHost,
+    targetPort: parseInt(targetPort) || 80
+  })
+
+  // Send tunnel open request to device
+  const deviceSocket = devices.get(deviceId)?.socket
+  if (!deviceSocket || deviceSocket.readyState !== 1) {
+    proxyConnections.delete(streamId)
+    clientSocket.end('HTTP/1.1 502 Device not connected\r\n\r\n')
+    return
+  }
+
+  const openMsg = {
+    t: 'open',
+    sid: streamId,
+    host: targetHost,
+    port: parseInt(targetPort) || 80,
+    timeoutMs: 10000
+  }
+
+  deviceSocket.send(JSON.stringify(openMsg))
+
+  // Set timeout for connection establishment
+  const timeout = setTimeout(() => {
+    proxyConnections.delete(streamId)
+    clientSocket.end('HTTP/1.1 504 Gateway Timeout\r\n\r\n')
+  }, 10000)
+
+  // Store timeout for cleanup
+  const conn = proxyConnections.get(streamId)
+  if (conn) conn.timeout = timeout
+
+  // Send 200 Connection established
+  clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+})
+
+// Handle tunnel binary data frames from devices
+function handleTunnelBinaryData(deviceId, data) {
+  try {
+    // Parse tunnel frame: [4 bytes sid][1 byte flags][payload]
+    if (data.length < 5) return
+
+    const sid = data.readUInt32BE(0)
+    const flags = data[1]
+    const payload = data.slice(5)
+
+    const conn = proxyConnections.get(sid.toString())
+    if (!conn || conn.deviceId !== deviceId) return
+
+    // Forward data to client
+    if (conn.socket && !conn.socket.destroyed) {
+      conn.socket.write(payload)
+    }
+  } catch (error) {
+    console.log('Error handling tunnel binary data:', error)
+  }
+}
+
+// Handle tunnel responses from devices
+function handleTunnelMessage(deviceId, message) {
+  if (!message.t) return
+
+  const { t, sid } = message
+  const conn = proxyConnections.get(sid)
+
+  if (!conn || conn.deviceId !== deviceId) {
+    // Connection not found or wrong device
+    if (conn) {
+      clearTimeout(conn.timeout)
+      proxyConnections.delete(sid)
+    }
+    return
+  }
+
+  switch (t) {
+    case 'open_ok':
+      // Device accepted connection
+      clearTimeout(conn.timeout)
+      conn.timeout = null
+      break
+
+    case 'open_fail':
+      // Device rejected connection
+      clearTimeout(conn.timeout)
+      proxyConnections.delete(sid)
+      conn.socket.end('HTTP/1.1 502 Device rejected connection\r\n\r\n')
+      break
+
+    case 'data':
+      // Forward binary data to client (handled separately in binary message handler)
+      break
+
+    case 'close':
+      // Device closed connection
+      clearTimeout(conn.timeout)
+      proxyConnections.delete(sid)
+      if (!conn.socket.destroyed) {
+        conn.socket.end()
+      }
+      break
+  }
+}
+
+// Handle client socket close/errors and data forwarding
+server.on('connection', (socket) => {
+  // Track if this is a proxy connection
+  let isProxySocket = false
+  let streamId = null
+
+  socket.on('data', (data) => {
+    // Find the proxy connection for this socket
+    if (!isProxySocket) {
+      for (const [sid, conn] of proxyConnections.entries()) {
+        if (conn.socket === socket) {
+          isProxySocket = true
+          streamId = sid
+          break
+        }
+      }
+    }
+
+    // Forward data to device if this is a proxy connection
+    if (isProxySocket && streamId) {
+      const conn = proxyConnections.get(streamId)
+      if (conn && conn.deviceId) {
+        const device = devices.get(conn.deviceId)
+        if (device?.socket?.readyState === 1) {
+          // Create tunnel frame: [4 bytes sid][1 byte flags][payload]
+          const sid = parseInt(streamId)
+          const frame = Buffer.allocUnsafe(5 + data.length)
+          frame.writeUInt32BE(sid, 0)
+          frame[4] = 0 // flags
+          data.copy(frame, 5)
+          device.socket.send(frame)
+        }
+      }
+    }
+  })
+
+  socket.on('close', () => {
+    // Find and clean up any proxy connections using this socket
+    for (const [sid, conn] of proxyConnections.entries()) {
+      if (conn.socket === socket) {
+        clearTimeout(conn.timeout)
+        proxyConnections.delete(sid)
+
+        // Notify device to close stream
+        const device = devices.get(conn.deviceId)
+        if (device?.socket?.readyState === 1) {
+          device.socket.send(JSON.stringify({
+            t: 'close',
+            sid: sid,
+            reason: 'client_close'
+          }))
+        }
+        break
+      }
+    }
+  })
+})
+
 const wss = new WebSocketServer({ server, path: '/ws/device' });
 
 wss.on('connection', async (socket, req) => {
@@ -613,6 +816,12 @@ wss.on('connection', async (socket, req) => {
       const device = devices.get(deviceId);
       if (device) device.lastSeenAt = Date.now();
 
+      // Handle binary tunnel data frames
+      if (Buffer.isBuffer(data)) {
+        handleTunnelBinaryData(deviceId, data)
+        return
+      }
+
       const text = typeof data === 'string' ? data : data?.toString?.();
       if (!text) return;
       const obj = (() => {
@@ -658,6 +867,11 @@ wss.on('connection', async (socket, req) => {
               console.log('db upsert device/status (lanIp/creds/status) failed:', e?.message || e)
             })
         }
+      }
+
+      // Handle tunnel messages for Phase 2
+      if (obj && obj.t) {
+        handleTunnelMessage(deviceId, obj)
       }
     });
 
