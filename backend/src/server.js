@@ -1029,6 +1029,26 @@ wss.on('connection', async (socket, req) => {
       // Handle binary tunnel data frames
       if (Buffer.isBuffer(data)) {
         console.log('Binary data received, length:', data.length)
+        
+        // Check if this is actually a text message sent as binary
+        const text = data.toString('utf8')
+        if (text.startsWith('{') && text.includes('"t"')) {
+          console.log('Detected JSON text message in binary frame')
+          try {
+            const obj = JSON.parse(text)
+            console.log('Parsed JSON from binary:', obj)
+            
+            // Handle tunnel messages
+            if (obj && obj.t) {
+              handleTunnelMessage(deviceId, obj)
+              return
+            }
+          } catch (e) {
+            console.log('Failed to parse JSON from binary:', e)
+          }
+        }
+        
+        console.log('First 100 bytes (hex):', data.subarray(0, 100).toString('hex'))
         handleTunnelBinaryData(deviceId, data)
         return
       }
