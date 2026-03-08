@@ -178,14 +178,17 @@ class ControlAgentService : Service() {
 
     private fun handleMessage(ws: WebSocket, text: String) {
         val obj = runCatching { JSONObject(text) }.getOrNull() ?: return
+        Log.d(TAG, "Received message: ${obj.optString("t", obj.optString("kind", "unknown"))}")
         
         // Handle tunnel messages
         when (obj.optString("t")) {
             "open" -> {
+                Log.d(TAG, "Tunnel open request: ${obj.optString("host")}:${obj.optInt("port")}")
                 handleTunnelOpen(ws, obj)
                 return
             }
             "close" -> {
+                Log.d(TAG, "Tunnel close request")
                 handleTunnelClose(ws, obj)
                 return
             }

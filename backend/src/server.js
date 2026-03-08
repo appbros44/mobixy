@@ -818,6 +818,8 @@ function handleTunnelMessage(deviceId, message) {
   const { t, sid } = message
   const conn = proxyConnections.get(sid)
 
+  console.log(`Tunnel message from ${deviceId}:`, message.t, 'sid:', sid, 'conn exists:', !!conn)
+
   if (!conn || conn.deviceId !== deviceId) {
     // Connection not found or wrong device
     if (conn) {
@@ -830,6 +832,7 @@ function handleTunnelMessage(deviceId, message) {
   switch (t) {
     case 'open_ok':
       // Device accepted connection
+      console.log('Device accepted connection, sending HTTP request')
       clearTimeout(conn.timeout)
       conn.timeout = null
       
@@ -849,6 +852,8 @@ function handleTunnelMessage(deviceId, message) {
         
         httpRequest += '\r\n'
         
+        console.log('Sending HTTP request through tunnel:', httpRequest.substring(0, 100) + '...')
+        
         // Send request through tunnel
         const device = devices.get(conn.deviceId)
         if (device?.socket?.readyState === 1) {
@@ -858,6 +863,8 @@ function handleTunnelMessage(deviceId, message) {
           frame[4] = 0 // flags
           Buffer.from(httpRequest).copy(frame, 5)
           device.socket.send(frame)
+        } else {
+          console.log('Device socket not ready')
         }
       }
       break
