@@ -123,16 +123,16 @@ class ControlAgentService : Service() {
                     webSocket.close(code, reason)
                 }
 
-                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    Log.i(TAG, "Closed: $code $reason")
-                    showToast("WebSocket closed: $code")
+                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                    Log.e(TAG, "WebSocket failure", t)
+                    showToast("WebSocket failed: ${t.message}")
                     PrefsDataSource(applicationContext).setAgentConnected(false)
                     disconnect()
                 }
 
-                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    Log.e(TAG, "WebSocket failure", t)
-                    showToast("WebSocket failed: ${t.message}")
+                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                    Log.i(TAG, "Closed: $code $reason")
+                    showToast("WebSocket closed: $code")
                     PrefsDataSource(applicationContext).setAgentConnected(false)
                     disconnect()
                 }
@@ -344,28 +344,30 @@ class ControlAgentService : Service() {
                 return
             }
 
+            Log.d(TAG, "Starting tunnel open for $sid to $host:$port")
+            
             CoroutineScope(Dispatchers.IO).launch {
-            try {
-                Log.d(TAG, "Starting TCP connection to $host:$port")
-                val stream = StreamMultiplexer.TunnelStream(sid, host, port, applicationContext)
-                
-                // Use shorter timeout for testing
-                stream.connect(5000) // 5 seconds instead of 10
-                tunnelStreams[sid] = stream
-                
-                Log.d(TAG, "TCP connected to $host:$port")
-                showToast("Connected to $host:$port")
-                sendOpenOk(ws, sid)
-                
-                // Wait for data from backend
-                // Data will be sent via handleBinaryMessage
-            } catch (e: Exception) {
-                Log.e(TAG, "Tunnel stream failed for $sid", e)
-                showToast("Connection failed: ${e.message}")
-                tunnelStreams.remove(sid)
-                sendOpenFail(ws, sid, e.message ?: "Connection failed")
+                try {
+                    Log.d(TAG, "Starting TCP connection to $host:$port")
+                    val stream = StreamMultiplexer.TunnelStream(sid, host, port, applicationContext)
+                    
+                    // Use shorter timeout for testing
+                    stream.connect(5000) // 5 seconds instead of 10
+                    tunnelStreams[sid] = stream
+                    
+                    Log.d(TAG, "TCP connected to $host:$port")
+                    showToast("Connected to $host:$port")
+                    sendOpenOk(ws, sid)
+                    
+                    // Wait for data from backend
+                    // Data will be sent via handleBinaryMessage
+                } catch (e: Exception) {
+                    Log.e(TAG, "Tunnel stream failed for $sid", e)
+                    showToast("Connection failed: ${e.message}")
+                    tunnelStreams.remove(sid)
+                    sendOpenFail(ws, sid, e.message ?: "Connection failed")
+                }
             }
-        }
         } catch (e: Exception) {
             Log.e(TAG, "Error in handleTunnelOpen", e)
             showToast("Tunnel open error: ${e.message}")
