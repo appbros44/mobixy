@@ -133,14 +133,88 @@ JWT_EXPIRES_IN=7d
 DEVICE_JWT_EXPIRES_IN=30d
 
 UI_ORIGIN=https://admin.apkroute.com
+
+# FCM (required for Wake push notifications)
+# Path to Firebase service account JSON on the server
+FIREBASE_SERVICE_ACCOUNT_PATH=/opt/mobixy/secrets/firebase-service-account.json
 ```
 
 Notes:
 
 - Do not change `JWT_SECRET` casually (it invalidates existing tokens).
 - `UI_ORIGIN` must match the admin panel origin.
+- Push notifications (Wake) require `FIREBASE_SERVICE_ACCOUNT_PATH` to be set.
 
 ---
+
+## 4.1) Firebase Cloud Messaging (FCM) setup (Wake push)
+
+Wake push notifications are sent by the backend using Firebase Admin SDK.
+
+The backend expects:
+
+- A **service account JSON** file on the server
+- `FIREBASE_SERVICE_ACCOUNT_PATH` env var pointing to it
+
+### 4.1.1 Get the service account JSON
+
+In Firebase Console:
+
+- Project settings
+- Service accounts
+- Generate new private key
+
+Download the JSON and upload it to the VPS.
+
+### 4.1.2 Place it on the VPS
+
+Recommended:
+
+```bash
+sudo mkdir -p /opt/mobixy/secrets
+sudo chown root:root /opt/mobixy/secrets
+sudo chmod 700 /opt/mobixy/secrets
+```
+
+Copy the JSON as:
+
+- `/opt/mobixy/secrets/firebase-service-account.json`
+
+Permissions (keep it private):
+
+```bash
+sudo chown root:root /opt/mobixy/secrets/firebase-service-account.json
+sudo chmod 600 /opt/mobixy/secrets/firebase-service-account.json
+```
+
+### 4.1.3 Configure backend env + restart
+
+Set in `/opt/mobixy/backend/.env`:
+
+- `FIREBASE_SERVICE_ACCOUNT_PATH=/opt/mobixy/secrets/firebase-service-account.json`
+
+Restart backend **with env refresh**:
+
+```bash
+pm2 restart mobixy-backend --update-env
+```
+
+### 4.1.4 Verify FCM works
+
+- Ensure the Android app has a valid FCM token stored (it saves it in prefs).
+- From admin panel, trigger **Wake**.
+
+If it fails, check backend logs:
+
+```bash
+pm2 logs mobixy-backend --lines 200
+```
+
+Common errors:
+
+- `missing_firebase_service_account_path` (env var not set in PM2)
+- JSON path wrong/permissions
+- Firebase project mismatch (service account from a different project than the Android app)
 
 ## 5) Install backend deps + Prisma
 

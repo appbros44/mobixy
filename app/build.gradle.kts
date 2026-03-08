@@ -46,6 +46,7 @@ android {
     buildFeatures {
         compose = true
     }
+    android.buildFeatures.buildConfig = true
 }
 
 dependencies {
