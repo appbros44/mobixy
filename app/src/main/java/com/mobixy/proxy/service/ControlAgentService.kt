@@ -23,6 +23,8 @@ import okhttp3.WebSocketListener
 import okio.ByteString
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.io.FileWriter
 import java.io.IOException
 import java.net.ConnectException
 import java.net.Inet4Address
@@ -30,7 +32,8 @@ import java.net.NetworkInterface
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.security.SecureRandom
-import java.util.UUID
+import java.text.SimpleDateFormat
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 
@@ -38,6 +41,22 @@ class ControlAgentService : Service() {
 
     private val okHttpClient = OkHttpClient()
     private val tunnelStreams = ConcurrentHashMap<String, StreamMultiplexer.TunnelStream>()
+    
+    // File logging for release builds
+    private val logFile by lazy {
+        File(filesDir, "mobixy.log")
+    }
+    
+    private fun logToFile(message: String) {
+        try {
+            val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+            FileWriter(logFile, true).use { writer ->
+                writer.append("$timestamp $message\n")
+            }
+        } catch (e: Exception) {
+            // Ignore logging errors
+        }
+    }
 
     @Volatile
     private var webSocket: WebSocket? = null
@@ -178,17 +197,21 @@ class ControlAgentService : Service() {
 
     private fun handleMessage(ws: WebSocket, text: String) {
         val obj = runCatching { JSONObject(text) }.getOrNull() ?: return
-        Log.d(TAG, "Received message: ${obj.optString("t", obj.optString("kind", "unknown"))}")
+        val msgType = obj.optString("t", obj.optString("kind", "unknown"))
+        Log.d(TAG, "Received message: $msgType")
+        logToFile("Received message: $msgType")
         
         // Handle tunnel messages
         when (obj.optString("t")) {
             "open" -> {
                 Log.d(TAG, "Tunnel open request: ${obj.optString("host")}:${obj.optInt("port")}")
+                logToFile("Tunnel open request: ${obj.optString("host")}:${obj.optInt("port")}")
                 handleTunnelOpen(ws, obj)
                 return
             }
             "close" -> {
                 Log.d(TAG, "Tunnel close request")
+                logToFile("Tunnel close request")
                 handleTunnelClose(ws, obj)
                 return
             }
