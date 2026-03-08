@@ -573,6 +573,8 @@ app.use('/proxy', (req, res, next) => {
     return Date.now() - lastSeen < 60000
   })
 
+  console.log('Online devices count:', onlineDevices.length)
+
   if (onlineDevices.length === 0) {
     return res.status(502).json({ error: 'No devices available' })
   }
@@ -580,6 +582,7 @@ app.use('/proxy', (req, res, next) => {
   // Round-robin device selection
   const deviceIndex = Math.floor(Math.random() * onlineDevices.length)
   const [deviceId, device] = onlineDevices[deviceIndex]
+  console.log('Selected device:', deviceId)
 
   // Generate unique stream ID
   const streamId = crypto.randomBytes(16).toString('hex')
@@ -653,14 +656,16 @@ app.use('/proxy', (req, res, next) => {
 
 // Keep CONNECT for direct connections (not through Cloudflare)
 server.on('connect', (req, clientSocket, head) => {
-  console.log('HTTP CONNECT request:', req.url, 'headers:', req.headers)
+  console.log('HTTP CONNECT request:', req.url)
+  console.log('All headers:', JSON.stringify(req.headers, null, 2))
   
   // Check API key authentication - try multiple headers
   const apiKey = req.headers['x-proxy-key'] || req.headers['proxy-authorization']
-  console.log('API key:', apiKey ? 'present' : 'missing')
+  console.log('API key check - x-proxy-key:', req.headers['x-proxy-key'])
+  console.log('API key check - proxy-authorization:', req.headers['proxy-authorization'])
   
   if (!apiKey) {
-    console.log('Rejecting: No API key')
+    console.log('Rejecting: No API key found')
     clientSocket.end('HTTP/1.1 401 Unauthorized\r\n\r\n')
     return
   }
