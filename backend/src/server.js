@@ -1031,6 +1031,9 @@ wss.on('connection', async (socket, req) => {
         }
       })();
 
+      console.log('Received from device:', obj);
+
+      // Handle existing status/command messages
       if (device && obj && obj.kind === 'status') {
         device.lastStatus = obj;
 

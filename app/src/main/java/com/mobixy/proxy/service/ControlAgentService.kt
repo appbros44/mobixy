@@ -32,6 +32,10 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.security.SecureRandom
 import java.util.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 
@@ -103,7 +107,12 @@ class ControlAgentService : Service() {
                 }
 
                 override fun onMessage(webSocket: WebSocket, text: String) {
-                    handleMessage(webSocket, text)
+                    try {
+                        handleMessage(webSocket, text)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error handling message", e)
+                        showToast("Message error: ${e.message}")
+                    }
                 }
 
                 override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
@@ -114,14 +123,16 @@ class ControlAgentService : Service() {
                     webSocket.close(code, reason)
                 }
 
-                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    Log.e(TAG, "WebSocket failure", t)
+                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                    Log.i(TAG, "Closed: $code $reason")
+                    showToast("WebSocket closed: $code")
                     PrefsDataSource(applicationContext).setAgentConnected(false)
                     disconnect()
                 }
 
-                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    Log.i(TAG, "Closed: $code $reason")
+                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                    Log.e(TAG, "WebSocket failure", t)
+                    showToast("WebSocket failed: ${t.message}")
                     PrefsDataSource(applicationContext).setAgentConnected(false)
                     disconnect()
                 }
@@ -322,37 +333,46 @@ class ControlAgentService : Service() {
     }
 
     private fun handleTunnelOpen(ws: WebSocket, msg: JSONObject) {
-        val sid = msg.optString("sid")
-        val host = msg.optString("host")
-        val port = msg.optInt("port")
-        val timeoutMs = msg.optInt("timeoutMs", 10000)
+        try {
+            val sid = msg.optString("sid")
+            val host = msg.optString("host")
+            val port = msg.optInt("port")
+            val timeoutMs = msg.optInt("timeoutMs", 10000)
 
-        showToast("Connecting to $host:$port")
-        
-        if (sid.isEmpty() || host.isEmpty()) {
-            showToast("Invalid tunnel parameters")
-            sendOpenFail(ws, sid, "Invalid parameters")
-            return
-        }
+            showToast("Connecting to $host:$port")
+            
+            if (sid.isEmpty() || host.isEmpty()) {
+                showToast("Invalid tunnel parameters")
+                sendOpenFail(ws, sid, "Invalid parameters")
+                return
+            }
 
-        Thread {
+            CoroutineScope(Dispatchers.IO).launch {
             try {
-                val stream = StreamMultiplexer.TunnelStream(sid, host, port)
-                stream.connect(timeoutMs)
+                showToast("Starting TCP connection to $host:$port")
+                val stream = StreamMultiplexer.TunnelStream(sid, host, port, applicationContext)
+                
+                // Use shorter timeout for testing
+                stream.connect(5000) // 5 seconds instead of 10
                 tunnelStreams[sid] = stream
                 
-                showToast("Connected to $host:$port")
+                showToast("TCP connected to $host:$port")
                 sendOpenOk(ws, sid)
                 
+                showToast("Waiting for HTTP data from backend...")
                 // Wait for data from backend
                 // Data will be sent via handleBinaryMessage
             } catch (e: Exception) {
                 Log.e(TAG, "Tunnel stream failed for $sid", e)
-                showToast("Connection failed: ${e.message}")
+                showToast("TCP failed: ${e.message}")
                 tunnelStreams.remove(sid)
                 sendOpenFail(ws, sid, e.message ?: "Connection failed")
             }
-        }.start()
+        }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in handleTunnelOpen", e)
+            showToast("Tunnel open error: ${e.message}")
+        }
     }
 
     private fun handleTunnelClose(ws: WebSocket, msg: JSONObject) {
@@ -368,6 +388,7 @@ class ControlAgentService : Service() {
         msg.put("t", "open_ok")
         msg.put("sid", sid)
         ws.send(msg.toString())
+        showToast("Sent open_ok for $sid")
     }
 
     private fun sendOpenFail(ws: WebSocket, sid: String, error: String) {

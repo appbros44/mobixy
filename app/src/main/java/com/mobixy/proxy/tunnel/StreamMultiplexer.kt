@@ -24,18 +24,19 @@ internal class StreamMultiplexer(
     class TunnelStream(
         private val sid: String,
         private val host: String,
-        private val port: Int
+        private val port: Int,
+        private val appContext: Context
     ) : Closeable {
         private var socket: Socket? = null
         private var inputStream: InputStream? = null
         private var outputStream: OutputStream? = null
+        private val dialer = CellularDialer(appContext)
 
-        fun connect(timeoutMs: Int) {
-            val sock = Socket()
-            sock.connect(java.net.InetSocketAddress(host, port), timeoutMs)
-            socket = sock
-            inputStream = sock.getInputStream()
-            outputStream = sock.getOutputStream()
+        suspend fun connect(timeoutMs: Int) {
+            // Use CellularDialer to ensure mobile data is used
+            socket = dialer.dial(host, port, timeoutMs)
+            inputStream = socket!!.getInputStream()
+            outputStream = socket!!.getOutputStream()
         }
 
         fun getInputStream(): InputStream {
