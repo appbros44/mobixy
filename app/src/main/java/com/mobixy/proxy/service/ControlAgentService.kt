@@ -357,6 +357,9 @@ class ControlAgentService : Service() {
                     
                     Log.d(TAG, "TCP connected to $host:$port")
                     showToast("Connected to $host:$port")
+                    
+                    // Add small delay before sending open_ok
+                    Thread.sleep(100)
                     sendOpenOk(ws, sid)
                     
                     // Wait for data from backend
@@ -388,8 +391,14 @@ class ControlAgentService : Service() {
         msg.put("sid", sid)
         val jsonStr = msg.toString()
         Log.d(TAG, "Sending open_ok: $jsonStr")
-        val success = ws.send(jsonStr)
-        Log.d(TAG, "Message sent success: $success")
+        try {
+            val success = ws.send(jsonStr)
+            Log.d(TAG, "Message sent success: $success")
+            showToast("Sent open_ok")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send open_ok", e)
+            showToast("Failed to send open_ok: ${e.message}")
+        }
     }
 
     private fun sendOpenFail(ws: WebSocket, sid: String, error: String) {

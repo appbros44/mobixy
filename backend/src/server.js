@@ -1019,21 +1019,28 @@ wss.on('connection', async (socket, req) => {
     }
 
     socket.on('message', (data) => {
+      console.log('=== RAW MESSAGE RECEIVED ===')
+      console.log('Data type:', typeof data)
+      console.log('Is Buffer:', Buffer.isBuffer(data))
+      
       const device = devices.get(deviceId);
       if (device) device.lastSeenAt = Date.now();
 
       // Handle binary tunnel data frames
       if (Buffer.isBuffer(data)) {
+        console.log('Binary data received, length:', data.length)
         handleTunnelBinaryData(deviceId, data)
         return
       }
 
       const text = typeof data === 'string' ? data : data?.toString?.();
+      console.log('Text message:', text)
       if (!text) return;
       const obj = (() => {
         try {
           return JSON.parse(text);
-        } catch {
+        } catch (e) {
+          console.log('JSON parse error:', e)
           return null;
         }
       })();
