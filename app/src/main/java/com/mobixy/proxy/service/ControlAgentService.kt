@@ -7,6 +7,7 @@ import android.os.IBinder
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.mobixy.proxy.R
 import com.mobixy.proxy.BuildConfig
@@ -23,8 +24,6 @@ import okhttp3.WebSocketListener
 import okio.ByteString
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
-import java.io.FileWriter
 import java.io.IOException
 import java.net.ConnectException
 import java.net.Inet4Address
@@ -32,7 +31,6 @@ import java.net.NetworkInterface
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.security.SecureRandom
-import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
@@ -42,19 +40,9 @@ class ControlAgentService : Service() {
     private val okHttpClient = OkHttpClient()
     private val tunnelStreams = ConcurrentHashMap<String, StreamMultiplexer.TunnelStream>()
     
-    // File logging for release builds
-    private val logFile by lazy {
-        File(filesDir, "mobixy.log")
-    }
-    
-    private fun logToFile(message: String) {
-        try {
-            val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-            FileWriter(logFile, true).use { writer ->
-                writer.append("$timestamp $message\n")
-            }
-        } catch (e: Exception) {
-            // Ignore logging errors
+    private fun showToast(message: String) {
+        Handler(Looper.getMainLooper()).post {
+            Toast.makeText(this@ControlAgentService, message, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -109,6 +97,7 @@ class ControlAgentService : Service() {
             webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     Log.i(TAG, "Connected")
+                    showToast("WebSocket connected")
                     PrefsDataSource(applicationContext).setAgentConnected(true)
                     sendStatus(webSocket)
                 }
@@ -199,19 +188,21 @@ class ControlAgentService : Service() {
         val obj = runCatching { JSONObject(text) }.getOrNull() ?: return
         val msgType = obj.optString("t", obj.optString("kind", "unknown"))
         Log.d(TAG, "Received message: $msgType")
-        logToFile("Received message: $msgType")
         
         // Handle tunnel messages
         when (obj.optString("t")) {
             "open" -> {
-                Log.d(TAG, "Tunnel open request: ${obj.optString("host")}:${obj.optInt("port")}")
-                logToFile("Tunnel open request: ${obj.optString("host")}:${obj.optInt("port")}")
+                val host = obj.optString("host")
+                val port = obj.optInt("port")
+                val message = "Tunnel open: $host:$port"
+                Log.d(TAG, message)
+                showToast(message)
                 handleTunnelOpen(ws, obj)
                 return
             }
             "close" -> {
                 Log.d(TAG, "Tunnel close request")
-                logToFile("Tunnel close request")
+                showToast("Tunnel close request")
                 handleTunnelClose(ws, obj)
                 return
             }
@@ -336,7 +327,10 @@ class ControlAgentService : Service() {
         val port = msg.optInt("port")
         val timeoutMs = msg.optInt("timeoutMs", 10000)
 
+        showToast("Connecting to $host:$port")
+        
         if (sid.isEmpty() || host.isEmpty()) {
+            showToast("Invalid tunnel parameters")
             sendOpenFail(ws, sid, "Invalid parameters")
             return
         }
@@ -347,12 +341,14 @@ class ControlAgentService : Service() {
                 stream.connect(timeoutMs)
                 tunnelStreams[sid] = stream
                 
+                showToast("Connected to $host:$port")
                 sendOpenOk(ws, sid)
                 
                 // Wait for data from backend
                 // Data will be sent via handleBinaryMessage
             } catch (e: Exception) {
                 Log.e(TAG, "Tunnel stream failed for $sid", e)
+                showToast("Connection failed: ${e.message}")
                 tunnelStreams.remove(sid)
                 sendOpenFail(ws, sid, e.message ?: "Connection failed")
             }

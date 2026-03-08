@@ -640,6 +640,7 @@ app.use('/proxy', (req, res, next) => {
     timeoutMs: 10000
   }
 
+  console.log('Sending tunnel open message to device:', deviceId, openMsg)
   deviceSocket.send(JSON.stringify(openMsg))
 
   // Set timeout
