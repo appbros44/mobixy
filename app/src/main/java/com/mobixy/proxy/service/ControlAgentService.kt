@@ -362,30 +362,10 @@ class ControlAgentService : Service() {
                     Thread.sleep(100)
                     sendOpenOk(ws, sid)
                     
-                    // Start reading responses from the server
-                    val buffer = ByteArray(8192)
-                    val inputStream = stream.getInputStream()
+                    // Don't start reading immediately
+                    // Wait for data from backend via handleBinaryMessage
+                    Log.d(TAG, "Waiting for HTTP request from backend...")
                     
-                    while (true) {
-                        val bytesRead = inputStream.read(buffer)
-                        if (bytesRead == -1) break
-                        
-                        // Send response back to backend
-                        val frame = ByteArray(5 + bytesRead)
-                        // Write stream ID (4 bytes big-endian)
-                        val sidInt = sid.toIntOrNull() ?: 0
-                        frame[0] = (sidInt shr 24).toByte()
-                        frame[1] = (sidInt shr 16).toByte()
-                        frame[2] = (sidInt shr 8).toByte()
-                        frame[3] = sidInt.toByte()
-                        frame[4] = 0 // flags
-                        System.arraycopy(buffer, 0, frame, 5, bytesRead)
-                        
-                        Log.d(TAG, "Sending ${bytesRead} bytes response to backend")
-                        ws.send(ByteString.of(*frame))
-                    }
-                    
-                    Log.d(TAG, "Connection closed for $sid")
                 } catch (e: Exception) {
                     Log.e(TAG, "Tunnel stream failed for $sid", e)
                     showToast("Connection failed: ${e.message}")
@@ -461,8 +441,49 @@ class ControlAgentService : Service() {
         try {
             stream.write(payload)
             Log.d(TAG, "Wrote ${payload.size} bytes to stream $sid")
+            
+            // Start reading responses after first write
+            startReadingResponse(ws, sid, stream)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to write to stream $sid", e)
+        }
+    }
+    
+    private fun startReadingResponse(ws: WebSocket, sid: String, stream: StreamMultiplexer.TunnelStream) {
+        // Only start reading once per stream
+        if (stream.isReading) return
+        stream.isReading = true
+        
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val buffer = ByteArray(8192)
+                val inputStream = stream.getInputStream()
+                
+                Log.d(TAG, "Starting to read responses from $sid")
+                
+                while (true) {
+                    val bytesRead = inputStream.read(buffer)
+                    if (bytesRead == -1) break
+                    
+                    // Send response back to backend
+                    val frame = ByteArray(5 + bytesRead)
+                    // Write stream ID (4 bytes big-endian)
+                    val sidInt = sid.toIntOrNull() ?: 0
+                    frame[0] = (sidInt shr 24).toByte()
+                    frame[1] = (sidInt shr 16).toByte()
+                    frame[2] = (sidInt shr 8).toByte()
+                    frame[3] = sidInt.toByte()
+                    frame[4] = 0 // flags
+                    System.arraycopy(buffer, 0, frame, 5, bytesRead)
+                    
+                    Log.d(TAG, "Sending ${bytesRead} bytes response to backend")
+                    ws.send(ByteString.of(*frame))
+                }
+                
+                Log.d(TAG, "Connection closed for $sid")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to read response from $sid", e)
+            }
         }
     }
 

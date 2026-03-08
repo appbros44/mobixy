@@ -31,6 +31,7 @@ internal class StreamMultiplexer(
         private var inputStream: InputStream? = null
         private var outputStream: OutputStream? = null
         private val dialer = CellularDialer(appContext)
+        var isReading = false
 
         suspend fun connect(timeoutMs: Int) {
             // Use CellularDialer to ensure mobile data is used
