@@ -1,0 +1,18 @@
+tunnel: mobixy-proxy
+credentials-file: /etc/cloudflared/mobixy-proxy.json
+
+ingress:
+  # Handle CONNECT requests for proxy.apkroute.com
+  - hostname: proxy.apkroute.com
+    service: http://127.0.0.1:8787
+    # Required for CONNECT requests
+    originRequest:
+      proxyPort: 8787
+      connectTimeout: 30s
+  
+  # Handle regular HTTP/HTTPS for api.apkroute.com
+  - hostname: api.apkroute.com
+    service: http://127.0.0.1:8787
+  
+  # Default catch-all
+  - service: http_status:404

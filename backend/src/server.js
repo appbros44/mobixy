@@ -550,13 +550,102 @@ app.post('/admin/devices/:deviceId/command', (req, res) => {
 
 const server = http.createServer(app);
 
-// HTTP CONNECT proxy listener for Phase 2
+// HTTP proxy listener for Phase 2 (supports both HTTP and HTTPS)
 const proxyConnections = new Map() // streamId -> { socket, deviceId, targetHost, targetPort }
 
+// Handle regular HTTP requests through proxy
+app.use('/proxy', (req, res, next) => {
+  // Only handle proxy requests
+  if (!req.headers['x-proxy-key']) {
+    return res.status(401).json({ error: 'Missing API key' })
+  }
+
+  const apiKey = req.headers['x-proxy-key']
+  if (apiKey.length < 10) {
+    return res.status(401).json({ error: 'Invalid API key' })
+  }
+
+  // Get online devices for round-robin selection
+  const onlineDevices = Array.from(devices.entries()).filter(([_, device]) => {
+    const lastSeen = device.lastSeenAt || 0
+    return Date.now() - lastSeen < 60000
+  })
+
+  if (onlineDevices.length === 0) {
+    return res.status(502).json({ error: 'No devices available' })
+  }
+
+  // Round-robin device selection
+  const deviceIndex = Math.floor(Math.random() * onlineDevices.length)
+  const [deviceId, device] = onlineDevices[deviceIndex]
+
+  // Generate unique stream ID
+  const streamId = crypto.randomBytes(16).toString('hex')
+
+  // Parse target URL
+  const targetUrl = req.url.substring(1) // Remove leading /
+  if (!targetUrl) {
+    return res.status(400).json({ error: 'Missing target URL' })
+  }
+
+  let url
+  try {
+    url = new URL(targetUrl)
+  } catch {
+    return res.status(400).json({ error: 'Invalid target URL' })
+  }
+
+  // Store connection info
+  proxyConnections.set(streamId, {
+    res,
+    deviceId,
+    targetHost: url.hostname,
+    targetPort: url.port || (url.protocol === 'https:' ? 443 : 80),
+    isHttps: url.protocol === 'https:',
+    method: req.method,
+    headers: req.headers,
+    body: req.body
+  })
+
+  // Send tunnel open request to device
+  const deviceSocket = devices.get(deviceId)?.socket
+  if (!deviceSocket || deviceSocket.readyState !== 1) {
+    proxyConnections.delete(streamId)
+    return res.status(502).json({ error: 'Device not connected' })
+  }
+
+  const openMsg = {
+    t: 'open',
+    sid: streamId,
+    host: url.hostname,
+    port: parseInt(url.port) || (url.protocol === 'https:' ? 443 : 80),
+    timeoutMs: 10000
+  }
+
+  deviceSocket.send(JSON.stringify(openMsg))
+
+  // Set timeout
+  const timeout = setTimeout(() => {
+    proxyConnections.delete(streamId)
+    if (!res.headersSent) {
+      res.status(504).json({ error: 'Gateway timeout' })
+    }
+  }, 10000)
+
+  const conn = proxyConnections.get(streamId)
+  if (conn) conn.timeout = timeout
+})
+
+// Keep CONNECT for direct connections (not through Cloudflare)
 server.on('connect', (req, clientSocket, head) => {
+  console.log('HTTP CONNECT request:', req.url, 'headers:', req.headers)
+  
   // Check API key authentication
   const apiKey = req.headers['x-proxy-key']
+  console.log('API key:', apiKey ? 'present' : 'missing')
+  
   if (!apiKey) {
+    console.log('Rejecting: No API key')
     clientSocket.end('HTTP/1.1 401 Unauthorized\r\n\r\n')
     return
   }
@@ -641,9 +730,53 @@ function handleTunnelBinaryData(deviceId, data) {
     const conn = proxyConnections.get(sid.toString())
     if (!conn || conn.deviceId !== deviceId) return
 
-    // Forward data to client
-    if (conn.socket && !conn.socket.destroyed) {
-      conn.socket.write(payload)
+    // For HTTP proxy, accumulate response and send when complete
+    if (conn.res && !conn.res.headersSent) {
+      // Check if this is the first chunk (HTTP response headers)
+      if (!conn.responseBuffer) {
+        conn.responseBuffer = Buffer.alloc(0)
+      }
+      
+      conn.responseBuffer = Buffer.concat([conn.responseBuffer, payload])
+      
+      // Check if we have complete headers
+      const headerEnd = conn.responseBuffer.toString().indexOf('\r\n\r\n')
+      if (headerEnd !== -1) {
+        // Parse response headers
+        const headerText = conn.responseBuffer.toString().substring(0, headerEnd)
+        const lines = headerText.split('\r\n')
+        const statusLine = lines[0]
+        const statusMatch = statusLine.match(/HTTP\/\d\.\d (\d{3})/)
+        
+        if (statusMatch) {
+          const statusCode = parseInt(statusMatch[1])
+          
+          // Copy headers
+          for (let i = 1; i < lines.length; i++) {
+            const [key, ...valueParts] = lines[i].split(':')
+            if (key && valueParts.length > 0) {
+              const value = valueParts.join(':').trim()
+              if (key.toLowerCase() !== 'connection' && 
+                  key.toLowerCase() !== 'transfer-encoding' &&
+                  key.toLowerCase() !== 'content-encoding') {
+                conn.res.setHeader(key, value)
+              }
+            }
+          }
+          
+          // Send status and remaining body
+          conn.res.status(statusCode)
+          const bodyStart = headerEnd + 4
+          if (conn.responseBuffer.length > bodyStart) {
+            conn.res.send(conn.responseBuffer.slice(bodyStart))
+          } else {
+            conn.res.end()
+          }
+        }
+      }
+    } else if (conn.res && conn.res.headersSent) {
+      // Streaming additional data
+      conn.res.write(payload)
     }
   } catch (error) {
     console.log('Error handling tunnel binary data:', error)
@@ -671,13 +804,43 @@ function handleTunnelMessage(deviceId, message) {
       // Device accepted connection
       clearTimeout(conn.timeout)
       conn.timeout = null
+      
+      // For HTTP proxy, send the request to device
+      if (conn.res && !conn.res.headersSent) {
+        // Build HTTP request to send through tunnel
+        const path = conn.body?.url || '/'
+        let httpRequest = `${conn.method} ${path} HTTP/1.1\r\n`
+        httpRequest += `Host: ${conn.targetHost}\r\n`
+        
+        // Copy relevant headers
+        for (const [key, value] of Object.entries(conn.headers)) {
+          if (!key.startsWith('x-proxy') && key !== 'host') {
+            httpRequest += `${key}: ${value}\r\n`
+          }
+        }
+        
+        httpRequest += '\r\n'
+        
+        // Send request through tunnel
+        const device = devices.get(conn.deviceId)
+        if (device?.socket?.readyState === 1) {
+          const sidInt = parseInt(sid)
+          const frame = Buffer.allocUnsafe(5 + httpRequest.length)
+          frame.writeUInt32BE(sidInt, 0)
+          frame[4] = 0 // flags
+          Buffer.from(httpRequest).copy(frame, 5)
+          device.socket.send(frame)
+        }
+      }
       break
 
     case 'open_fail':
       // Device rejected connection
       clearTimeout(conn.timeout)
       proxyConnections.delete(sid)
-      conn.socket.end('HTTP/1.1 502 Device rejected connection\r\n\r\n')
+      if (conn.res && !conn.res.headersSent) {
+        conn.res.status(502).json({ error: 'Device rejected connection' })
+      }
       break
 
     case 'data':
@@ -688,8 +851,8 @@ function handleTunnelMessage(deviceId, message) {
       // Device closed connection
       clearTimeout(conn.timeout)
       proxyConnections.delete(sid)
-      if (!conn.socket.destroyed) {
-        conn.socket.end()
+      if (conn.res && !conn.res.headersSent) {
+        conn.res.status(502).json({ error: 'Device closed connection' })
       }
       break
   }
