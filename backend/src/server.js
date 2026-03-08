@@ -555,6 +555,8 @@ const proxyConnections = new Map() // streamId -> { socket, deviceId, targetHost
 
 // Handle regular HTTP requests through proxy
 app.use('/proxy', (req, res, next) => {
+  console.log('Proxy request:', req.method, req.url)
+  
   // Only handle proxy requests
   if (!req.headers['x-proxy-key']) {
     return res.status(401).json({ error: 'Missing API key' })
@@ -582,17 +584,30 @@ app.use('/proxy', (req, res, next) => {
   // Generate unique stream ID
   const streamId = crypto.randomBytes(16).toString('hex')
 
-  // Parse target URL
-  const targetUrl = req.url.substring(1) // Remove leading /
+  // Parse target URL - remove /proxy/ prefix
+  let targetUrl = req.url
+  if (targetUrl.startsWith('/')) {
+    targetUrl = targetUrl.substring(1)
+  }
+  
+  console.log('Target URL:', targetUrl)
+  
   if (!targetUrl) {
     return res.status(400).json({ error: 'Missing target URL' })
+  }
+
+  // Add protocol if missing
+  if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+    targetUrl = 'https://' + targetUrl
   }
 
   let url
   try {
     url = new URL(targetUrl)
-  } catch {
-    return res.status(400).json({ error: 'Invalid target URL' })
+    console.log('Parsed URL:', url.hostname, url.port || (url.protocol === 'https:' ? 443 : 80))
+  } catch (e) {
+    console.log('URL parse error:', e.message)
+    return res.status(400).json({ error: 'Invalid target URL: ' + e.message })
   }
 
   // Store connection info
