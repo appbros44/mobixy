@@ -205,15 +205,12 @@ class ControlAgentService : Service() {
             "open" -> {
                 val host = obj.optString("host")
                 val port = obj.optInt("port")
-                val message = "Tunnel open: $host:$port"
-                Log.d(TAG, message)
-                showToast(message)
+                Log.d(TAG, "Tunnel open: $host:$port")
                 handleTunnelOpen(ws, obj)
                 return
             }
             "close" -> {
                 Log.d(TAG, "Tunnel close request")
-                showToast("Tunnel close request")
                 handleTunnelClose(ws, obj)
                 return
             }
@@ -349,22 +346,22 @@ class ControlAgentService : Service() {
 
             CoroutineScope(Dispatchers.IO).launch {
             try {
-                showToast("Starting TCP connection to $host:$port")
+                Log.d(TAG, "Starting TCP connection to $host:$port")
                 val stream = StreamMultiplexer.TunnelStream(sid, host, port, applicationContext)
                 
                 // Use shorter timeout for testing
                 stream.connect(5000) // 5 seconds instead of 10
                 tunnelStreams[sid] = stream
                 
-                showToast("TCP connected to $host:$port")
+                Log.d(TAG, "TCP connected to $host:$port")
+                showToast("Connected to $host:$port")
                 sendOpenOk(ws, sid)
                 
-                showToast("Waiting for HTTP data from backend...")
                 // Wait for data from backend
                 // Data will be sent via handleBinaryMessage
             } catch (e: Exception) {
                 Log.e(TAG, "Tunnel stream failed for $sid", e)
-                showToast("TCP failed: ${e.message}")
+                showToast("Connection failed: ${e.message}")
                 tunnelStreams.remove(sid)
                 sendOpenFail(ws, sid, e.message ?: "Connection failed")
             }
@@ -391,7 +388,6 @@ class ControlAgentService : Service() {
         Log.d(TAG, "Sending open_ok: $jsonStr")
         val success = ws.send(jsonStr)
         Log.d(TAG, "Message sent success: $success")
-        showToast("Sent open_ok for $sid")
     }
 
     private fun sendOpenFail(ws: WebSocket, sid: String, error: String) {

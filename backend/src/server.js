@@ -814,7 +814,14 @@ function handleTunnelBinaryData(deviceId, data) {
 
 // Handle tunnel responses from devices
 function handleTunnelMessage(deviceId, message) {
-  if (!message.t) return
+  console.log('=== TUNNEL MESSAGE ===')
+  console.log('Device ID:', deviceId)
+  console.log('Message:', JSON.stringify(message))
+  
+  if (!message.t) {
+    console.log('No message.t field, returning')
+    return
+  }
 
   const { t, sid } = message
   const conn = proxyConnections.get(sid)
@@ -1031,7 +1038,7 @@ wss.on('connection', async (socket, req) => {
         }
       })();
 
-      console.log('Received from device:', obj);
+      console.log('Received from device:', JSON.stringify(obj))
 
       // Handle existing status/command messages
       if (device && obj && obj.kind === 'status') {
