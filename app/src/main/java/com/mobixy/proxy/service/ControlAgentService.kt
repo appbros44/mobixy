@@ -362,8 +362,30 @@ class ControlAgentService : Service() {
                     Thread.sleep(100)
                     sendOpenOk(ws, sid)
                     
-                    // Wait for data from backend
-                    // Data will be sent via handleBinaryMessage
+                    // Start reading responses from the server
+                    val buffer = ByteArray(8192)
+                    val inputStream = stream.getInputStream()
+                    
+                    while (true) {
+                        val bytesRead = inputStream.read(buffer)
+                        if (bytesRead == -1) break
+                        
+                        // Send response back to backend
+                        val frame = ByteArray(5 + bytesRead)
+                        // Write stream ID (4 bytes big-endian)
+                        val sidInt = sid.toIntOrNull() ?: 0
+                        frame[0] = (sidInt shr 24).toByte()
+                        frame[1] = (sidInt shr 16).toByte()
+                        frame[2] = (sidInt shr 8).toByte()
+                        frame[3] = sidInt.toByte()
+                        frame[4] = 0 // flags
+                        System.arraycopy(buffer, 0, frame, 5, bytesRead)
+                        
+                        Log.d(TAG, "Sending ${bytesRead} bytes response to backend")
+                        ws.send(ByteString.of(*frame))
+                    }
+                    
+                    Log.d(TAG, "Connection closed for $sid")
                 } catch (e: Exception) {
                     Log.e(TAG, "Tunnel stream failed for $sid", e)
                     showToast("Connection failed: ${e.message}")
@@ -409,27 +431,38 @@ class ControlAgentService : Service() {
         ws.send(msg.toString())
     }
 
-    private fun handleBinaryMessage(ws: WebSocket, data: ByteArray) {
+    private fun handleBinaryMessage(ws: WebSocket, bytes: ByteArray) {
+        Log.d(TAG, "Binary message received: ${bytes.size} bytes")
+        Log.d(TAG, "Hex: ${bytes.take(32).joinToString("") { "%02x".format(it) }}")
+        
+        if (bytes.size < 5) {
+            Log.w(TAG, "Binary frame too short: ${bytes.size} bytes")
+            return
+        }
+        
+        // Parse stream ID (4 bytes big-endian)
+        val sidInt = ((bytes[0].toInt() and 0xFF) shl 24) or
+                    ((bytes[1].toInt() and 0xFF) shl 16) or
+                    ((bytes[2].toInt() and 0xFF) shl 8) or
+                    (bytes[3].toInt() and 0xFF)
+        val sid = sidInt.toString()
+        val flags = bytes[4].toInt()
+        val payload = bytes.drop(5).toByteArray()
+        
+        Log.d(TAG, "Binary frame: sid=$sid, flags=$flags, payloadSize=${payload.size}")
+        Log.d(TAG, "Payload as text: ${payload.toString(Charsets.UTF_8)}")
+        
+        val stream = tunnelStreams[sid]
+        if (stream == null) {
+            Log.w(TAG, "No stream found for sid: $sid")
+            return
+        }
+        
         try {
-            // Parse tunnel frame: [4 bytes sid][1 byte flags][payload]
-            if (data.size < 5) return
-
-            // Extract stream ID (big-endian)
-            val sid = ((data[0].toInt() and 0xFF) shl 24) or
-                     ((data[1].toInt() and 0xFF) shl 16) or
-                     ((data[2].toInt() and 0xFF) shl 8) or
-                     (data[3].toInt() and 0xFF)
-            
-            val flags = data[4]
-            val payload = data.sliceArray(5 until data.size)
-
-            val sidStr = sid.toString()
-            val stream = tunnelStreams[sidStr]
-            if (stream != null) {
-                stream.write(payload)
-            }
+            stream.write(payload)
+            Log.d(TAG, "Wrote ${payload.size} bytes to stream $sid")
         } catch (e: Exception) {
-            Log.e(TAG, "Error handling binary message", e)
+            Log.e(TAG, "Failed to write to stream $sid", e)
         }
     }
 
