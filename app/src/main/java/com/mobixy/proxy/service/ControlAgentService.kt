@@ -323,26 +323,8 @@ class ControlAgentService : Service() {
                 
                 sendOpenOk(ws, sid)
                 
-                // Start forwarding data
-                val inputStream = stream.getInputStream()
-                val buffer = ByteArray(8192)
-                while (true) {
-                    val bytesRead = inputStream.read(buffer)
-                    if (bytesRead == -1) break
-                    
-                    // Send data to backend
-                    val frame = ByteArray(5 + bytesRead)
-                    // Write stream ID (4 bytes big-endian)
-                    val sidInt = sid.toIntOrNull() ?: 0
-                    frame[0] = (sidInt shr 24).toByte()
-                    frame[1] = (sidInt shr 16).toByte()
-                    frame[2] = (sidInt shr 8).toByte()
-                    frame[3] = sidInt.toByte()
-                    frame[4] = 0 // flags
-                    System.arraycopy(buffer, 0, frame, 5, bytesRead)
-                    
-                    ws.send(ByteString.of(*frame))
-                }
+                // Wait for data from backend
+                // Data will be sent via handleBinaryMessage
             } catch (e: Exception) {
                 Log.e(TAG, "Tunnel stream failed for $sid", e)
                 tunnelStreams.remove(sid)

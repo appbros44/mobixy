@@ -655,8 +655,8 @@ app.use('/proxy', (req, res, next) => {
 server.on('connect', (req, clientSocket, head) => {
   console.log('HTTP CONNECT request:', req.url, 'headers:', req.headers)
   
-  // Check API key authentication
-  const apiKey = req.headers['x-proxy-key']
+  // Check API key authentication - try multiple headers
+  const apiKey = req.headers['x-proxy-key'] || req.headers['proxy-authorization']
   console.log('API key:', apiKey ? 'present' : 'missing')
   
   if (!apiKey) {
@@ -664,10 +664,18 @@ server.on('connect', (req, clientSocket, head) => {
     clientSocket.end('HTTP/1.1 401 Unauthorized\r\n\r\n')
     return
   }
-
-  // TODO: Validate API key against database (for now, accept any non-empty key)
-  if (apiKey.length < 10) {
-    clientSocket.end('HTTP/1.1 401 Invalid API key\r\n\r\n')
+  
+  // Remove "Bearer " or "Basic " prefix if present
+  let cleanKey = apiKey
+  if (apiKey.startsWith('Bearer ')) {
+    cleanKey = apiKey.substring(7)
+  } else if (apiKey.startsWith('Basic ')) {
+    cleanKey = apiKey.substring(6)
+  }
+  
+  if (cleanKey.length < 10) {
+    console.log('Rejecting: API key too short')
+    clientSocket.end('HTTP/1.1 401 Unauthorized\r\n\r\n')
     return
   }
 
