@@ -387,7 +387,10 @@ class ControlAgentService : Service() {
         val msg = JSONObject()
         msg.put("t", "open_ok")
         msg.put("sid", sid)
-        ws.send(msg.toString())
+        val jsonStr = msg.toString()
+        Log.d(TAG, "Sending open_ok: $jsonStr")
+        val success = ws.send(jsonStr)
+        Log.d(TAG, "Message sent success: $success")
         showToast("Sent open_ok for $sid")
     }
 
